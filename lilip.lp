@@ -12,7 +12,7 @@ the typesetting markup used for prose passages.  By modifying a few lines of
 typesetting markup language for the generated cross references. [smu
 markdown][github.com/Gottox/smu] is produced by default.
 
-`lilip`s control markup consists of just seven control sequences:
+`lilip`s control markup consists of just eight control sequences:
 
 @:~
 
@@ -46,6 +46,10 @@ except for flags which must appear inside of a code chunk.\
 \
 @(shell command expansion)    Expand a shell command into the file and continue\
                               processing the expanded file recursively.\
+\
+@@                            Escape sequence. A literal @ sign with no special\
+                              meaning to lilip that will be copied as an @ to\
+                              any output tangled or woven documents.\
 \
 Flags:\
 \
@@ -85,7 +89,7 @@ int main(char ** argv, int argc)
     int file_size;
     dict * d;
     list * tangles;
-    ~{help text}
+~{help text}
 
     ~{parse command line arguments}
 
@@ -616,7 +620,7 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent, int ind
             *invocation = CTRL;
 
             /* check if the CTRL character is from an escape sequence */
-            if (*(s + 1) != '{' && *(s + 1) != '*')
+            if (!(*(invocation + 1) == '{' || *(invocation + 1) == '*'))
             {
                 ++s;
                 invocation = strchr(s, CTRL);
