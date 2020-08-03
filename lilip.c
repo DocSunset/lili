@@ -259,7 +259,7 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent, int ind
     }
 }
 
-int main(char ** argv, int argc)
+int main(int argc, char ** argv)
 {
     int tangle, weave;
     char * source;
@@ -268,63 +268,68 @@ int main(char ** argv, int argc)
     dict * d;
     list * tangles;
 const char * help =
-"Control sequences: \
-\
-Control sequences are permitted to appear at any point in the source file, \
-except for flags which must appear inside of a code chunk.\
-\
-\
-@:new control character       Redefines the control character to search for from\
-                              @ to whatever immediately follows the : sign.\
-                              This is useful if your machine source has lots of\
-                              @ signs.\
-\
-@=chunk name                  Begin a chunk declaration. The chunk name is set\
-                              to the remainder of the line after the = excluding\
-                              leading and trailing white space.\
-\
-@-FLAG                        Set the flag named FLAG (see below).\
-\
-@                             End a chunk declaration. The @ must be immediately\
-                              followed by a newline character or the end of the \
-                              file without intervening white space.\
-\
-@{chunk invocation}           Paste in a chunk (tangle) or link to it (weave).\
-\
-@*{chunk invocation}          As above, but paste the contents of the chunk\
-                              while weaving as well as linking.\
-\
-@(shell command expansion)    Expand a shell command into the file and continue\
-                              processing the expanded file recursively.\
-\
-@@                            Escape sequence. A literal @ sign with no special\
-                              meaning to lilip that will be copied as an @ to\
-                              any output tangled or woven documents.\
-\
-Flags:\
-\
-These can appear during a code chunk definition to set options regarding its\
-presentation in the weave, and how it should be treated during tangling.\
-\
-\
--t filename                   Indicate this is an outline of a file to tangle.\
-                              The code in this chunk and all its children will\
-                              be output to the given file, overwriting it if it\
-                              already exists. \
-\
--n                            Suppresses inclusion of this chunk in the weave.\
-                              This is overridden if the chunk is @*{invoked}\
-                              with a dereference star.\
-\
--l LANG                       Indicates the language for syntax highlighting\
-                              if different from the parent chunk. It should be\
-                              explicitly specified for any top level chunks to\
+"Control sequences: \n\
+\n\
+Control sequences are permitted to appear at any point in the source file, \n\
+except for flags which must appear inside of a code chunk.\n\
+\n\
+\n\
+@:new control character       Redefines the control character to search for from\n\
+                              @ to whatever immediately follows the : sign.\n\
+                              This is useful if your machine source has lots of\n\
+                              @ signs.\n\
+\n\
+@=chunk name                  Begin a chunk declaration. The chunk name is set\n\
+                              to the remainder of the line after the = excluding\n\
+                              leading and trailing white space.\n\
+\n\
+@-FLAG                        Set the flag named FLAG (see below).\n\
+\n\
+@                             End a chunk declaration. The @ must be immediately\n\
+                              followed by a newline character or the end of the \n\
+                              file without intervening white space.\n\
+\n\
+@{chunk invocation}           Paste in a chunk (tangle) or link to it (weave).\n\
+\n\
+@*{chunk invocation}          As above, but paste the contents of the chunk\n\
+                              while weaving as well as linking.\n\
+\n\
+@(shell command expansion)    Expand a shell command into the file and continue\n\
+                              processing the expanded file recursively.\n\
+\n\
+@@                            Escape sequence. A literal @ sign with no special\n\
+                              meaning to lilip that will be copied as an @ to\n\
+                              any output tangled or woven documents.\n\
+\n\
+Flags:\n\
+\n\
+These can appear during a code chunk definition to set options regarding its\n\
+presentation in the weave, and how it should be treated during tangling.\n\
+\n\
+\n\
+-t filename                   Indicate this is an outline of a file to tangle.\n\
+                              The code in this chunk and all its children will\n\
+                              be output to the given file, overwriting it if it\n\
+                              already exists. \n\
+\n\
+-n                            Suppresses inclusion of this chunk in the weave.\n\
+                              This is overridden if the chunk is @*{invoked}\n\
+                              with a dereference star.\n\
+\n\
+-l LANG                       Indicates the language for syntax highlighting\n\
+                              if different from the parent chunk. It should be\n\
+                              explicitly specified for any top level chunks to\n\
                               tangle.\n\
 ";
 
     tangle = 1;
     weave = 1;
-    const char * filename = "lilip.lp";
+    if (argc < 2 || *argv[1] == '-' /* assume -h */) 
+    {
+        printf("%s", help);
+        exit(0);
+    }
+    char * filename = argv[1];
 
     if (! (tangle || weave)) return 0; /* nothing to do! */
 
