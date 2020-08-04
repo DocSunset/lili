@@ -51,6 +51,8 @@ ATSIGNATSIGN                  Escape sequence. A literal ATSIGN sign with no\n\
 ";
 ~
 
+The program takes two passes over the data: extraction and output.
+
 ~#lilit.c
 ~{definitions}
 
@@ -62,16 +64,7 @@ int main(int argc, char ** argv)
 }
 ~
 
-The approach flows as follows:
-- Scan the literate source until you find a chunk definition.
-- When a code chunk definition begins, make a new code chunk object to store it.
-- Copy the source data to a buffer until the code chunk ends
-- When the end of chunk sequence is found, duplicate the buffer to the code
-  chunk object, and save the code chunk in an associative array with its name
-  as the key.
-- Additionally, if the code chunk is marked for tangling, save it in a linked
-  list. This is useful later to quickly iterate over all the tangle chunks.
-- Repeat until you reach the end of the source and have captured all the chunks.
+# Extraction
 
 ~=extract code chunks
 {
@@ -180,7 +173,7 @@ else ATSIGN = *s;
 ~=extract chunk
 int tangle = *s++ == '#';
 code_chunk * c = code_chunk_new(duplicate_line_and_increment(&s));
-c->contents = s;
+c->contents = list_new((void *)s);
 c->tangle = tangle;
 
 if (c->name == NULL)
@@ -211,6 +204,8 @@ for (; *s; ++s)
             }
             break;
         }
+        *s++ = '\0';
+        list_append(&c->contents, (void *)s);
     }
 }
 ~
@@ -236,14 +231,13 @@ for(; tangles != NULL; tangles = tangles->successor)
 ~=code chunk print
 void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent, int indented)
 {
-    char * s = c->contents;
+    list * l = c->contents;
     /* https://stackoverflow.com/questions/17983005/c-how-to-read-a-string-line-by-line */
-    while(s && *s)
+    for (; l != NULL; l = l->successor)
     {
-        if (!indented) fprintf(f, "%s", indent);
         char * invocation;
-        char * next_newline_char = strchr(s, '\n');
-        if (next_newline_char) *next_newline_char = '\0';  /* terminate the current line */
+        char * s = l->data;
+        if (!indented) fprintf(f, "%s", indent);
 
         invocation = strchr(s, CTRL);
         while (invocation != NULL)
@@ -293,15 +287,8 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent, int ind
         }
         /* print a whole line with no invocation, or the remainder of the line
          * following any number of invocations */
-        fprintf(f, "%s", s); 
-
-        if (next_newline_char) 
-        {
-            *next_newline_char = '\n';  /* restore newline-char */
-            fprintf(f, "\n");
-            indented = 0;
-        }
-        s = next_newline_char ? (next_newline_char+1) : NULL;
+        fprintf(f, "%s\n", s); 
+        indented = 0;
     }
 }
 ~
@@ -346,7 +333,7 @@ typedef struct List list;
 typedef struct CodeChunk
 {
     char * name;
-    char * contents;
+    list * contents;
     int tangle;
 } code_chunk;
 
@@ -375,15 +362,16 @@ list * list_new(void * d)
 
 void list_append(list ** lst, void * addend)
 {
+    list * a = list_new(addend);
     if (*lst == NULL)
     {
-        *lst = list_new(addend);
+        *lst = a;
     }
     else
     {
         list * l = *lst;
         while (l->successor != NULL) l = l->successor; /* go to the end of l */
-        l->successor = addend;
+        l->successor = a;
     }
 }
 

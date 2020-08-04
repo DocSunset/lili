@@ -3,17 +3,15 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stddef.h>
-
 char ATSIGN = 64; /* ascii for at sign */
 const char CTRL = 7; /* ascii ^G, aka BEL */
 int line_number = 0;
-
 typedef struct List list;
 
 typedef struct CodeChunk
 {
     char * name;
-    char * contents;
+    list * contents;
     int tangle;
 } code_chunk;
 
@@ -42,15 +40,16 @@ list * list_new(void * d)
 
 void list_append(list ** lst, void * addend)
 {
+    list * a = list_new(addend);
     if (*lst == NULL)
     {
-        *lst = list_new(addend);
+        *lst = a;
     }
     else
     {
         list * l = *lst;
         while (l->successor != NULL) l = l->successor; /* go to the end of l */
-        l->successor = addend;
+        l->successor = a;
     }
 }
 
@@ -98,7 +97,6 @@ code_chunk * dict_get(dict * d, char * name)
     return NULL;
 }
 
-
 char * duplicate_line_and_increment(char ** s)
 {
     char * selection_start = *s;
@@ -122,7 +120,6 @@ char * duplicate_line_and_increment(char ** s)
 
     return destination;
 }
-
 char * extract_invocation_name(char * s)
 {
     char * selection_start = s;
@@ -148,17 +145,15 @@ char * extract_invocation_name(char * s)
     *selection_end = '}';
     return destination;
 }
-
 void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent, int indented)
 {
-    char * s = c->contents;
+    list * l = c->contents;
     /* https://stackoverflow.com/questions/17983005/c-how-to-read-a-string-line-by-line */
-    while(s && *s)
+    for (; l != NULL; l = l->successor)
     {
-        if (!indented) fprintf(f, "%s", indent);
         char * invocation;
-        char * next_newline_char = strchr(s, '\n');
-        if (next_newline_char) *next_newline_char = '\0';  /* terminate the current line */
+        char * s = l->data;
+        if (!indented) fprintf(f, "%s", indent);
 
         invocation = strchr(s, CTRL);
         while (invocation != NULL)
@@ -208,19 +203,10 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent, int ind
         }
         /* print a whole line with no invocation, or the remainder of the line
          * following any number of invocations */
-        fprintf(f, "%s", s); 
-
-        if (next_newline_char) 
-        {
-            *next_newline_char = '\n';  /* restore newline-char */
-            fprintf(f, "\n");
-            indented = 0;
-        }
-        s = next_newline_char ? (next_newline_char+1) : NULL;
+        fprintf(f, "%s\n", s); 
+        indented = 0;
     }
 }
-
-
 const char * help =
 "Control sequences: \n\
 \n\
@@ -254,22 +240,18 @@ ATSIGNATSIGN                  Escape sequence. A literal ATSIGN sign with no\n\
 \n\
 ";
 
-
-
 int main(int argc, char ** argv)
 {
     int file_size;
     char * source;
     dict * d;
     list * tangles = NULL;
-
     if (argc < 2 || *argv[1] == '-' /* assume -h */) 
     {
         printf("%s", help);
         exit(0);
     }
     char * filename = argv[1];
-
     {
         FILE * source_file = fopen(filename, "r");
         if (source_file == NULL)
@@ -290,10 +272,7 @@ int main(int argc, char ** argv)
         
         source[file_size] = 0;
     }
-
     d = dict_new(128); /* for storing chunks */
-
-
     {
         char * s = source;
         
@@ -314,7 +293,7 @@ int main(int argc, char ** argv)
                 {
                     int tangle = *s++ == '#';
                     code_chunk * c = code_chunk_new(duplicate_line_and_increment(&s));
-                    c->contents = s;
+                    c->contents = list_new((void *)s);
                     c->tangle = tangle;
                     
                     if (c->name == NULL)
@@ -345,9 +324,10 @@ int main(int argc, char ** argv)
                                 }
                                 break;
                             }
+                            *s++ = '\0';
+                            list_append(&c->contents, (void *)s);
                         }
                     }
-
                 }
                 else if (*s++ == ':')
                 {
@@ -364,13 +344,11 @@ int main(int argc, char ** argv)
                         exit(1);
                     }
                     else ATSIGN = *s;
-
                 }
             }
             ++s;
         }
     }
-
     for(; tangles != NULL; tangles = tangles->successor)
     {
         FILE * f;
@@ -386,5 +364,4 @@ int main(int argc, char ** argv)
         code_chunk_print(f, d, c, "", 0);
         fclose(f);
     }
-
 }
