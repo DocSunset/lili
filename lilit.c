@@ -29,29 +29,32 @@ code_chunk * code_chunk_new(char * name)
 
 struct List
 {
-    code_chunk * chunk;
+    void * data;
     struct List * successor;
 };
 
-list * list_new(code_chunk * c)
+list * list_new(void * d)
 {
     list * l = malloc(sizeof(list));
-    l->chunk = c;
+    l->data = d;
     l->successor = NULL;
 }
 
-void list_append(list * l, list * addend)
+void list_append(list ** lst, void * addend)
 {
-    if (l == NULL)
+    if (*lst == NULL)
     {
-        fprintf(stderr, "Error: attempt to list append to NULL on line %d\n", line_number);
-        exit(1);
+        *lst = list_new(addend);
     }
-    while (l->successor != NULL) l = l->successor; /* go to the end of l */
-    l->successor = addend;
+    else
+    {
+        list * l = *lst;
+        while (l->successor != NULL) l = l->successor; /* go to the end of l */
+        l->successor = addend;
+    }
 }
 
-/* http://www.cse.yorku.ca/* http://www.cse.yorku.ca/ http://www.cse.yorku.ca/http://www.cse.yorku.ca/ttp://www.cse.yorku.ca/tp://www.cse.yorku.ca/p://www.cse.yorku.ca/://www.cse.yorku.ca///www.cse.yorku.ca//www.cse.yorku.ca/www.cse.yorku.ca/ww.cse.yorku.ca/w.cse.yorku.ca/.cse.yorku.ca/cse.yorku.ca/se.yorku.ca/e.yorku.ca/.yorku.ca/yorku.ca/orku.ca/rku.ca/ku.ca/u.ca/.ca/ca/a//oz/hash.html */
+/* http://www.cse.yorku.ca/~oz/hash.html */
 unsigned long hash(unsigned char *str)
 {
     unsigned long hash = 5381;
@@ -79,9 +82,7 @@ dict * dict_new(size_t size)
 void dict_add(dict * d, code_chunk * c)
 {
     unsigned long h = hash(c->name) % d->size;
-    list * l = list_new(c);
-    if (d->array[h] == NULL) d->array[h] = l;
-    else list_append(d->array[h], l);
+    list_append(&(d->array[h]), (void *) c);
 }
 
 code_chunk * dict_get(dict * d, char * name)
@@ -90,7 +91,8 @@ code_chunk * dict_get(dict * d, char * name)
     list * l = d->array[h];
     while (l != NULL)
     {
-        if (strcmp(name, l->chunk->name) == 0) return l->chunk;
+        code_chunk * c = l->data;
+        if (strcmp(name, c->name) == 0) return c;
         else l = l->successor;
     }
     return NULL;
@@ -173,9 +175,9 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent, int ind
             *invocation = CTRL;
 
             /* check if the CTRL character is from an escape sequence */
-            if (!(*(invocation + 1) == '{' || *(invocation + 1) == '*'))
+            if (*(invocation + 1) != '{')
             {
-                ++s;
+                s = invocation + 1;
                 invocation = strchr(s, CTRL);
                 continue;
             }
@@ -325,7 +327,11 @@ int main(int argc, char ** argv)
                     
                     for (; *s; ++s)
                     {
-                        if (*s == ATSIGN) *s = CTRL;
+                        if (*s == ATSIGN) 
+                        {
+                            *s = CTRL;
+                            if (*(s + 1) == ATSIGN) ++s; /* escape, ignore the second ATSIGN */
+                        }
                         else if (*s == '\n')
                         {
                             ++line_number;
@@ -333,8 +339,10 @@ int main(int argc, char ** argv)
                             {
                                 *(s - 1) = '\0'; 
                                 dict_add(d, c);
-                                if (tangles == NULL) tangles = list_new(c);
-                                else list_append(tangles, list_new(c));
+                                if (c->tangle)
+                                {
+                                    list_append(&tangles, (void *)c);
+                                }
                                 break;
                             }
                         }
@@ -366,7 +374,7 @@ int main(int argc, char ** argv)
     for(; tangles != NULL; tangles = tangles->successor)
     {
         FILE * f;
-        code_chunk * c = tangles->chunk;
+        code_chunk * c = tangles->data;
         f = fopen(c->name, "w");
         if (f == NULL)
         {
