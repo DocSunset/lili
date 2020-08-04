@@ -3,19 +3,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stddef.h>
+
 char ATSIGN = 64; /* ascii for at sign */
 const char CTRL = 7; /* ascii ^G, aka BEL */
-/* Since the control sequence leader character can be changed with 'ATSIGN:',
- * it's necessary to swap all the ATSIGNs that are found while extracting to
- * some stable character to prevent bugs when tangling and weaving. It is
- * assumed that ascii 7 (^G, BEL) will never occur in any source code file,
- * so we can transliterate ATSIGNs to 7 without having to worry about escapes.
- * If anyone ever tries to run `lilit` on a file with actual ascii 7 embedded in
- * the text, it will undoubtedly cause errors. If this ever happens, the
- * solution would be to detect actual ascii 7 while extracting and embed some
- * kind of escape sequence.
- */
 int line_number = 0;
+
 typedef struct List list;
 
 typedef struct CodeChunk
@@ -23,10 +15,6 @@ typedef struct CodeChunk
     char * name;
     char * contents;
     int tangle;
-    char * filename;
-    char * language;
-    struct CodeChunk * parent;
-    list * children;
 } code_chunk;
 
 
@@ -36,28 +24,7 @@ code_chunk * code_chunk_new(char * name)
     chunk->name     = name;
     chunk->contents = NULL;
     chunk->tangle   = 0;
-    chunk->filename = NULL;
-    chunk->language = NULL;
-    chunk->parent   = NULL;
-    chunk->children = NULL;
     return chunk;
-}
-
-/*
-int code_chunk_is_ref(const code_chunk * c)
-{
-    if (c->contents == NULL) return 1;
-    else return 0;
-}
-*/
-
-void code_chunk_free(code_chunk ** c)
-{
-    free((*c)->name);
-    free((*c)->contents);
-    free((*c)->language);
-    free((*c));
-    *c = NULL;
 }
 
 struct List
@@ -84,14 +51,13 @@ void list_append(list * l, list * addend)
     l->successor = addend;
 }
 
-/* http://www.cse.yorku.ca/~oz/hash.html */
+/* http://www.cse.yorku.ca/* http://www.cse.yorku.ca/ http://www.cse.yorku.ca/http://www.cse.yorku.ca/ttp://www.cse.yorku.ca/tp://www.cse.yorku.ca/p://www.cse.yorku.ca/://www.cse.yorku.ca///www.cse.yorku.ca//www.cse.yorku.ca/www.cse.yorku.ca/ww.cse.yorku.ca/w.cse.yorku.ca/.cse.yorku.ca/cse.yorku.ca/se.yorku.ca/e.yorku.ca/.yorku.ca/yorku.ca/orku.ca/rku.ca/ku.ca/u.ca/.ca/ca/a//oz/hash.html */
 unsigned long hash(unsigned char *str)
 {
     unsigned long hash = 5381;
     int c;
 
-    while (c = *str++)
-        hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+    while (c = *str++) hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
 
     return hash;
 }
@@ -130,13 +96,7 @@ code_chunk * dict_get(dict * d, char * name)
     return NULL;
 }
 
-void ignore_remainder_of_line(char ** s)
-{
-    char * selection_start = *s;
-    char * selection_end = strchr(selection_start, '\n');
-    *s += selection_end - selection_start + 1; /* + 1 for \n */
-    line_number += 1;
-}
+
 char * duplicate_line_and_increment(char ** s)
 {
     char * selection_start = *s;
@@ -160,6 +120,7 @@ char * duplicate_line_and_increment(char ** s)
 
     return destination;
 }
+
 char * extract_invocation_name(char * s)
 {
     char * selection_start = s;
@@ -185,6 +146,7 @@ char * extract_invocation_name(char * s)
     *selection_end = '}';
     return destination;
 }
+
 void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent, int indented)
 {
     char * s = c->contents;
@@ -200,8 +162,8 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent, int ind
         while (invocation != NULL)
         {
             code_chunk * next_c;
-            char * name;
             char tmp;
+            char * name;
             char * indent_end;
             char * next_indent;
 
@@ -255,52 +217,57 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent, int ind
         s = next_newline_char ? (next_newline_char+1) : NULL;
     }
 }
+
+
 const char * help =
 "Control sequences: \n\
 \n\
 Control sequences are permitted to appear at any point in the source file, \n\
-except for flags which must appear inside of a code chunk.\n\
+except for flags which must appear inside of a code chunk. All control sequences\n\
+begin with a special character called ATSIGN, which is set to '@' by default.\n\
 \n\
 \n\
-@:new control character       Redefines the control character to search for from\n\
-                              @ to whatever immediately follows the : sign.\n\
-                              This is useful if your machine source has lots of\n\
-                              @ signs.\n\
+ATSIGN:new control character  Redefines ATSIGN to whatever immediately follows\n\
+                              the : sign. This is useful if your machine source\n\
+                              has lots of @ signs, for example.\n\
 \n\
-@=chunk name                  Begin a regular chunk declaration.\n\
+ATSIGN='chunk name'           Begin a regular chunk declaration.\n\
 \n\
-@#chunk name                  Begin a tangle chunk declaration. This is similar\n\
+ATSIGN#'chunk name'           Begin a tangle chunk declaration. This is similar\n\
                               to a regular chunk, except the name of the chunk\n\
                               is also interpreted as a file name, and the chunk\n\
                               is recursively expanded into the file with that\n\
                               name, overwriting any existing file.\n\
 \n\
-@                             End a chunk declaration. The @ must be immediately\n\
-                              followed by a newline character or the end of the \n\
-                              file without intervening white space.\n\
+ATSIGN                        End a chunk declaration. The ATSIGN must be \n\
+                              immediately followed by a newline character or the\n\
+                              end of the file without intervening white space.\n\
 \n\
-@{chunk invocation}           Invoke a chunk to be recursively expanded into any\n\
+ATSIGN{chunk invocation}      Invoke a chunk to be recursively expanded into any\n\
                               tangled output files.\n\
 \n\
-@@                            Escape sequence. A literal @ sign with no special\n\
-                              meaning to lilit that will be copied as an @ to\n\
-                              any output tangled or woven documents.\n\
+ATSIGNATSIGN                  Escape sequence. A literal ATSIGN sign with no\n\
+                              special meaning to lilit that will be copied as an\n\
+                              ATSIGN to any output tangled or woven documents.\n\
 \n\
 ";
+
+
 
 int main(int argc, char ** argv)
 {
     int file_size;
     char * source;
-    char * buffer;
     dict * d;
-    list * tangles;
+    list * tangles = NULL;
+
     if (argc < 2 || *argv[1] == '-' /* assume -h */) 
     {
         printf("%s", help);
         exit(0);
     }
     char * filename = argv[1];
+
     {
         FILE * source_file = fopen(filename, "r");
         if (source_file == NULL)
@@ -321,159 +288,95 @@ int main(int argc, char ** argv)
         
         source[file_size] = 0;
     }
-    buffer = malloc(file_size + 1); /* for temporary storage */
-    memset(buffer, 0, file_size + 1);
+
     d = dict_new(128); /* for storing chunks */
+
+
     {
-        char * b = buffer;
         char * s = source;
-        code_chunk * current_chunk = NULL;
         
-        while (s != source + file_size)
+        while (*s != '\0') 
         {
-            if (*s != ATSIGN)
+            if (*s == '\n')
             {
-                char * next_control_char = strchr(s, ATSIGN);
-                char * next_newline_char = strchr(s, '\n'); 
-                while(next_newline_char < next_control_char)
-                {
-                    ++line_number;
-                    next_newline_char = strchr(next_newline_char + 1, '\n'); 
-                }
-                
-                if (current_chunk != NULL)
-                {
-                    if (next_control_char == NULL)
-                    {
-                        fprintf(stderr, 
-                                "Error: Expected terminating ATSIGN before end of file\n");
-                        exit(1);
-                    }
-                    strncpy(b, s, next_control_char - s);
-                    b += next_control_char - s;
-                }
-                
-                if (next_control_char == NULL) break;
-                s = next_control_char + 1; 
+                ++line_number;
             }
-            else ++s;
-            /* `s` points at the next character after ATSIGN */
-            /* ATSIGNs are converted to ^G so that we can find them again later in case 
-             * ATSIGN is changed to some other character */
-            *(s - 1) = CTRL; 
-        
-            switch (*s++) /* the character after the ATSIGN determines the command */
+            else if (*s == ATSIGN)
             {
-            case ':':
-                if  (  *s == ':' 
-                    || *s == '=' 
-                    || *s == '-' 
-                    || *s == '\n' 
-                    || *s == '{' 
-                    || *s == '*'
-                    )
+                /* ATSIGNs are converted to CTRL so that we can find them again
+                 * later even in case ATSIGN is changed to some other character
+                 * in the interim */
+                *s++ = CTRL; /* set ATSIGN to CTRL and increment s */
+    
+                if (*s == '=' || *s == '#')
                 {
-                    fprintf(stderr,
-                            "Error: cannot redefine ATSIGN to a character used in control sequences on line %d\n",
-                            line_number);
-                    exit(1);
-                }
-                ATSIGN = *s;
-                ignore_remainder_of_line(&s);
-                break;
-            case '=':
-            case '#':
-                if (current_chunk != NULL)
-                {
-                    fprintf(stderr, 
-                            "Error: code chunk defined inside code chunk on line %d.\n",
-                            line_number);
-                    exit(1);
-                }
-            
-                current_chunk = code_chunk_new(duplicate_line_and_increment(&s));
-            
-                if (current_chunk->name == NULL)
-                {
-                    fprintf(stderr,
-                            "Error: expected code chunk name on line %d.\n",
-                            line_number);
-                    exit(1);
-                }
-            
-                if (*(s - 1) == '#') current_chunk->tangle = 1;
-                break;
-            case '\n':
-            case '\0':
-                /* copy buffer to current_chunk->contents */
-                if (*(b - 1) == '\n') *(b - 1) = '\0';
-                current_chunk->contents = malloc(b - buffer);
-                strncpy(current_chunk->contents, buffer, b - buffer);
-            
-                dict_add(d, current_chunk);
-                if (current_chunk->tangle) 
-                {
-                    list * l = list_new(current_chunk);
-                    if (tangles == NULL) tangles = l;
-                    else list_append(tangles, l);
-                }
-                current_chunk = NULL;
-            
-                /* reset buffer */
-                memset(buffer, 0, b - buffer);
-                b = buffer;
-                break;
-            case '{':
-                if (current_chunk == NULL) break; /* invocation in prose ignored while extracting */
-                else 
-                {
-                    b += sprintf(b, "{");
-            
-                    /* invocation in code chunk added to chunk->children while extracting */
-                    list * l;
-            
-                    char * name = extract_invocation_name(s);
-                    if (name == NULL)
+                    int tangle = *s++ == '#';
+                    code_chunk * c = code_chunk_new(duplicate_line_and_increment(&s));
+                    c->contents = s;
+                    c->tangle = tangle;
+                    
+                    if (c->name == NULL)
                     {
                         fprintf(stderr,
-                                "Error: expected chunk name in invocation on line %d\n",
+                                "Error: expected code chunk name on line %d.\n",
                                 line_number);
                         exit(1);
                     }
-            
-                    l = list_new(code_chunk_new(name));
-                    if (current_chunk->children == NULL) current_chunk->children = l;
-                    else list_append(current_chunk->children, l);
-                } 
-                break;
-            default:
-                if (*(s - 1) == ATSIGN)
-                {
-                    if (current_chunk == NULL) break; /* ignore escape in prose */
-                    b += sprintf(b, &ATSIGN);
-                    break;
+                    
+                    for (; *s; ++s)
+                    {
+                        if (*s == ATSIGN) *s = CTRL;
+                        else if (*s == '\n')
+                        {
+                            ++line_number;
+                            if (*(s - 1) == CTRL)
+                            {
+                                *(s - 1) = '\0'; 
+                                dict_add(d, c);
+                                if (tangles == NULL) tangles = list_new(c);
+                                else list_append(tangles, list_new(c));
+                                break;
+                            }
+                        }
+                    }
+
                 }
-                fprintf(stderr, 
-                        "Error: Unrecognized control sequence '%c%c' on line %d\n", 
-                        ATSIGN, *(s - 1), line_number);
-                exit(1);
+                else if (*s++ == ':')
+                {
+                    if  (  *s == ':' 
+                        || *s == '=' 
+                        || *s == '#' 
+                        || *s == '\n' 
+                        || *s == '{' 
+                        )
+                    {
+                        fprintf(stderr,
+                                "Error: cannot redefine ATSIGN to a character used in control sequences on line %d\n",
+                                line_number);
+                        exit(1);
+                    }
+                    else ATSIGN = *s;
+
+                }
             }
-            
+            ++s;
         }
     }
+
     for(; tangles != NULL; tangles = tangles->successor)
     {
         FILE * f;
         code_chunk * c = tangles->chunk;
-        f = fopen(c->filename, "w");
+        f = fopen(c->name, "w");
         if (f == NULL)
         {
             fprintf(stderr,
                     "Warning: failed to open file '%s', skipping tangle '%s'\n",
-                    c->filename, c->name);
+                    c->name, c->name);
             continue;
         }
         code_chunk_print(f, d, c, "", 0);
         fclose(f);
     }
+
 }
