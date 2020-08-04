@@ -306,8 +306,8 @@ int main(int argc, char ** argv)
                                 }
                                 break;
                             }
-                            *s++ = '\0';
-                            list_append(&c->contents, (void *)s);
+                            *s = '\0';
+                            list_append(&c->contents, (void *)(s + 1));
                         }
                     }
                 }
