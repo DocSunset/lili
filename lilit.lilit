@@ -16,7 +16,7 @@ example http://akkartik.name/post/literate-programming).
 
 @:~
 
-~=markup help text
+~='markup help text'
 const char * help =
 "Control sequences: \n\
 \n\
@@ -64,9 +64,7 @@ int main(int argc, char ** argv)
 }
 ~
 
-# Extraction
-
-~=extract code chunks
+~='extract code chunks'
 {
     char * s = source;
     
@@ -97,64 +95,54 @@ int main(int argc, char ** argv)
 }
 ~
 
-The chunk name is expected to occupy the remainder of a line, which is copied
-to the respective field of the `current_chunk` by calling this function:
-
-~=duplicate line
-char * duplicate_line_and_increment(char ** s)
+~='output tangle chunks recursively'
+for(; tangles != NULL; tangles = tangles->successor)
 {
-    char * selection_start = *s;
-    char * destination;
-    char * selection_end;
-
-    while (isspace(*selection_start)) ++selection_start; 
-    selection_end = strchr(selection_start, '\n');
-    while (isspace(*selection_end)) --selection_end; 
-    ++selection_end; /* point one past the last non-whitespace character */
-
-    if (selection_end - selection_start == 0) return NULL;
-
-    *selection_end = '\0';
-    destination = malloc(strlen(selection_start) + 1);
-    strcpy(destination, selection_start);
-    *selection_end = '\n';
-
-    *s = selection_end + 1; /* s points after newline */
-    line_number += 1;
-
-    return destination;
+    FILE * f;
+    code_chunk * c = tangles->data;
+    f = fopen(c->name, "w");
+    if (f == NULL)
+    {
+        fprintf(stderr,
+                "Warning: failed to open file '%s', skipping tangle '%s'\n",
+                c->name, c->name);
+        continue;
+    }
+    code_chunk_print(f, d, c, "", 0);
+    fclose(f);
 }
 ~
 
-~=extract invocation name
-char * extract_invocation_name(char * s)
+~='extract name'
+char * extract_name(char * s, char terminus)
 {
-    char * selection_start = s;
     char * destination;
-    char * selection_end = strchr(selection_start, '}');
-    if (selection_end == NULL)
+    char * selection_start = s;
+    char * selection_end = strchr(selection_start, terminus);
+    char * end_of_line = strchr(selection_start, '\n');
+    if (selection_end > end_of_line || selection_end == NULL)
     {
         fprintf(stderr,
-                "Error: unterminated chunk invocation on line %d\n",
+                "Error: unterminated name on line %d\n",
                 line_number);
         exit(1);
     }
     if (selection_end - selection_start == 0) 
     {
         fprintf(stderr,
-                "Error: empty chunk invocation on line %d\n",
+                "Error: empty name on line %d\n",
                 line_number);
         exit(1);
     }
     *selection_end = '\0';
     destination = malloc(strlen(selection_start) + 1);
     strcpy(destination, selection_start);
-    *selection_end = '}';
+    *selection_end = terminus;
     return destination;
 }
 ~
 
-~=change ATSIGN
+~='change ATSIGN'
 if  (  *s == ':' 
     || *s == '=' 
     || *s == '#' 
@@ -170,9 +158,13 @@ if  (  *s == ':'
 else ATSIGN = *s;
 ~
 
-~=extract chunk
-int tangle = *s++ == '#';
-code_chunk * c = code_chunk_new(duplicate_line_and_increment(&s));
+~='extract chunk'
+/* s points to ATSIGN/CTRL on entry */
+int tangle = *s++ == '#'; /* ATSIGN# means tangle */
+char terminus = *s++; /* chunk name should be 'wrapped' in "matching" *characters* */
+code_chunk * c = code_chunk_new(extract_name(s, terminus));
+while (*s++ != '\n') {} /* ignore remainder of line after chunk name */
+
 c->contents = list_new((void *)s);
 c->tangle = tangle;
 
@@ -202,33 +194,24 @@ for (; *s; ++s)
             {
                 list_append(&tangles, (void *)c);
             }
+            c == NULL;
             break;
         }
         *s++ = '\0';
         list_append(&c->contents, (void *)s);
     }
 }
-~
-
-~=output tangle chunks recursively
-for(; tangles != NULL; tangles = tangles->successor)
+if (c)
 {
-    FILE * f;
-    code_chunk * c = tangles->data;
-    f = fopen(c->name, "w");
-    if (f == NULL)
+    dict_add(d, c);
+    if (c->tangle)
     {
-        fprintf(stderr,
-                "Warning: failed to open file '%s', skipping tangle '%s'\n",
-                c->name, c->name);
-        continue;
+        list_append(&tangles, (void *)c);
     }
-    code_chunk_print(f, d, c, "", 0);
-    fclose(f);
 }
 ~
 
-~=code chunk print
+~='code chunk print'
 void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent, int indented)
 {
     list * l = c->contents;
@@ -272,7 +255,7 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent, int ind
 
             /* print the invocation itself */
             invocation = strchr(invocation, '{') + 1; 
-            name = extract_invocation_name(invocation);
+            name = extract_name(invocation, '}');
             next_c = dict_get(d, name);
             if (next_c == NULL)
             {
@@ -293,7 +276,7 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent, int ind
 }
 ~
 
-~=load file into `char * source`
+~='load file into `char * source`'
 {
     FILE * source_file = fopen(filename, "r");
     if (source_file == NULL)
@@ -316,7 +299,7 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent, int ind
 }
 ~
 
-~=includes
+~='includes'
 #include <ctype.h>
 #include <string.h>
 #include <stdlib.h>
@@ -327,7 +310,7 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent, int ind
 The ***_new functions enforce a few invariants: a `code_chunk` must always have
 a name, and a `list` must always have a `code_chunk`.
 
-~=data types
+~='data types'
 typedef struct List list;
 
 typedef struct CodeChunk
@@ -421,7 +404,7 @@ code_chunk * dict_get(dict * d, char * name)
 
 ~
 
-~=parse command line arguments
+~='parse command line arguments'
 if (argc < 2 || *argv[1] == '-' /* assume -h */) 
 {
     printf("%s", help);
@@ -430,9 +413,8 @@ if (argc < 2 || *argv[1] == '-' /* assume -h */)
 char * filename = argv[1];
 ~
 
-~=functions
-~{duplicate line}
-~{extract invocation name}
+~='functions'
+~{extract name}
 ~{code chunk print}
 ~
 
@@ -446,13 +428,13 @@ the text, it will undoubtedly cause errors. If this ever happens, the
 solution would be to detect actual ascii 7 while extracting and embed some
 kind of escape sequence.
 
-~=globals
+~='globals'
 char ATSIGN = 64; /* ascii for at sign */
 const char CTRL = 7; /* ascii ^G, aka BEL */
 int line_number = 0;
 ~
 
-~=definitions
+~='definitions'
 ~{includes}
 ~{globals}
 ~{data types}
@@ -460,21 +442,21 @@ int line_number = 0;
 ~{markup help text}
 ~
 
-~=setup
+~='setup'
 ~{variables}
 ~{parse command line arguments}
 ~{load file into `char * source`}
 ~{allocate additional memory}
 ~
 
-~=variables
+~='variables'
 int file_size;
 char * source;
 dict * d;
 list * tangles = NULL;
 ~
 
-~=allocate additional memory
+~='allocate additional memory'
 d = dict_new(128); /* for storing chunks */
 ~
 

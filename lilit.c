@@ -97,52 +97,30 @@ code_chunk * dict_get(dict * d, char * name)
     return NULL;
 }
 
-char * duplicate_line_and_increment(char ** s)
+char * extract_name(char * s, char terminus)
 {
-    char * selection_start = *s;
     char * destination;
-    char * selection_end;
-
-    while (isspace(*selection_start)) ++selection_start; 
-    selection_end = strchr(selection_start, '\n');
-    while (isspace(*selection_end)) --selection_end; 
-    ++selection_end; /* point one past the last non-whitespace character */
-
-    if (selection_end - selection_start == 0) return NULL;
-
-    *selection_end = '\0';
-    destination = malloc(strlen(selection_start) + 1);
-    strcpy(destination, selection_start);
-    *selection_end = '\n';
-
-    *s = selection_end + 1; /* s points after newline */
-    line_number += 1;
-
-    return destination;
-}
-char * extract_invocation_name(char * s)
-{
     char * selection_start = s;
-    char * destination;
-    char * selection_end = strchr(selection_start, '}');
-    if (selection_end == NULL)
+    char * selection_end = strchr(selection_start, terminus);
+    char * end_of_line = strchr(selection_start, '\n');
+    if (selection_end > end_of_line || selection_end == NULL)
     {
         fprintf(stderr,
-                "Error: unterminated chunk invocation on line %d\n",
+                "Error: unterminated name on line %d\n",
                 line_number);
         exit(1);
     }
     if (selection_end - selection_start == 0) 
     {
         fprintf(stderr,
-                "Error: empty chunk invocation on line %d\n",
+                "Error: empty name on line %d\n",
                 line_number);
         exit(1);
     }
     *selection_end = '\0';
     destination = malloc(strlen(selection_start) + 1);
     strcpy(destination, selection_start);
-    *selection_end = '}';
+    *selection_end = terminus;
     return destination;
 }
 void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent, int indented)
@@ -188,7 +166,7 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent, int ind
 
             /* print the invocation itself */
             invocation = strchr(invocation, '{') + 1; 
-            name = extract_invocation_name(invocation);
+            name = extract_name(invocation, '}');
             next_c = dict_get(d, name);
             if (next_c == NULL)
             {
@@ -291,8 +269,12 @@ int main(int argc, char ** argv)
     
                 if (*s == '=' || *s == '#')
                 {
-                    int tangle = *s++ == '#';
-                    code_chunk * c = code_chunk_new(duplicate_line_and_increment(&s));
+                    /* s points to ATSIGN/CTRL on entry */
+                    int tangle = *s++ == '#'; /* ATSIGN# means tangle */
+                    char terminus = *s++; /* chunk name should be 'wrapped' in "matching" *characters* */
+                    code_chunk * c = code_chunk_new(extract_name(s, terminus));
+                    while (*s++ != '\n') {} /* ignore remainder of line after chunk name */
+                    
                     c->contents = list_new((void *)s);
                     c->tangle = tangle;
                     
