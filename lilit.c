@@ -1,3 +1,8 @@
+#include <ctype.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <stddef.h>
 char ATSIGN = 64; /* ascii for at sign */
 const char CTRL = 7; /* ascii ^G, aka BEL */
 /* Since the control sequence leader character can be changed with 'ATSIGN:',
@@ -5,18 +10,12 @@ const char CTRL = 7; /* ascii ^G, aka BEL */
  * some stable character to prevent bugs when tangling and weaving. It is
  * assumed that ascii 7 (^G, BEL) will never occur in any source code file,
  * so we can transliterate ATSIGNs to 7 without having to worry about escapes.
- * If anyone ever tries to run `lilip` on a file with actual ascii 7 embedded in
+ * If anyone ever tries to run `lilit` on a file with actual ascii 7 embedded in
  * the text, it will undoubtedly cause errors. If this ever happens, the
  * solution would be to detect actual ascii 7 while extracting and embed some
  * kind of escape sequence.
  */
 int line_number = 0;
-#include <ctype.h>
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <stddef.h>
-
 typedef struct List list;
 
 typedef struct CodeChunk
@@ -25,7 +24,6 @@ typedef struct CodeChunk
     char * contents;
     int tangle;
     char * filename;
-    int weave;
     char * language;
     struct CodeChunk * parent;
     list * children;
@@ -39,7 +37,6 @@ code_chunk * code_chunk_new(char * name)
     chunk->contents = NULL;
     chunk->tangle   = 0;
     chunk->filename = NULL;
-    chunk->weave    = 1;
     chunk->language = NULL;
     chunk->parent   = NULL;
     chunk->children = NULL;
@@ -258,15 +255,6 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent, int ind
         s = next_newline_char ? (next_newline_char+1) : NULL;
     }
 }
-
-int main(int argc, char ** argv)
-{
-    int tangle, weave;
-    char * source;
-    char * buffer;
-    int file_size;
-    dict * d;
-    list * tangles;
 const char * help =
 "Control sequences: \n\
 \n\
@@ -279,60 +267,40 @@ except for flags which must appear inside of a code chunk.\n\
                               This is useful if your machine source has lots of\n\
                               @ signs.\n\
 \n\
-@=chunk name                  Begin a chunk declaration. The chunk name is set\n\
-                              to the remainder of the line after the = excluding\n\
-                              leading and trailing white space.\n\
+@=chunk name                  Begin a regular chunk declaration.\n\
 \n\
-@-FLAG                        Set the flag named FLAG (see below).\n\
+@#chunk name                  Begin a tangle chunk declaration. This is similar\n\
+                              to a regular chunk, except the name of the chunk\n\
+                              is also interpreted as a file name, and the chunk\n\
+                              is recursively expanded into the file with that\n\
+                              name, overwriting any existing file.\n\
 \n\
 @                             End a chunk declaration. The @ must be immediately\n\
                               followed by a newline character or the end of the \n\
                               file without intervening white space.\n\
 \n\
-@{chunk invocation}           Paste in a chunk (tangle) or link to it (weave).\n\
-\n\
-@*{chunk invocation}          As above, but paste the contents of the chunk\n\
-                              while weaving as well as linking.\n\
-\n\
-@(shell command expansion)    Expand a shell command into the file and continue\n\
-                              processing the expanded file recursively.\n\
+@{chunk invocation}           Invoke a chunk to be recursively expanded into any\n\
+                              tangled output files.\n\
 \n\
 @@                            Escape sequence. A literal @ sign with no special\n\
-                              meaning to lilip that will be copied as an @ to\n\
+                              meaning to lilit that will be copied as an @ to\n\
                               any output tangled or woven documents.\n\
 \n\
-Flags:\n\
-\n\
-These can appear during a code chunk definition to set options regarding its\n\
-presentation in the weave, and how it should be treated during tangling.\n\
-\n\
-\n\
--t filename                   Indicate this is an outline of a file to tangle.\n\
-                              The code in this chunk and all its children will\n\
-                              be output to the given file, overwriting it if it\n\
-                              already exists. \n\
-\n\
--n                            Suppresses inclusion of this chunk in the weave.\n\
-                              This is overridden if the chunk is @*{invoked}\n\
-                              with a dereference star.\n\
-\n\
--l LANG                       Indicates the language for syntax highlighting\n\
-                              if different from the parent chunk. It should be\n\
-                              explicitly specified for any top level chunks to\n\
-                              tangle.\n\
 ";
 
-    tangle = 1;
-    weave = 1;
+int main(int argc, char ** argv)
+{
+    int file_size;
+    char * source;
+    char * buffer;
+    dict * d;
+    list * tangles;
     if (argc < 2 || *argv[1] == '-' /* assume -h */) 
     {
         printf("%s", help);
         exit(0);
     }
     char * filename = argv[1];
-
-    if (! (tangle || weave)) return 0; /* nothing to do! */
-
     {
         FILE * source_file = fopen(filename, "r");
         if (source_file == NULL)
@@ -353,12 +321,9 @@ presentation in the weave, and how it should be treated during tangling.\n\
         
         source[file_size] = 0;
     }
-
     buffer = malloc(file_size + 1); /* for temporary storage */
     memset(buffer, 0, file_size + 1);
-
     d = dict_new(128); /* for storing chunks */
-
     {
         char * b = buffer;
         char * s = source;
@@ -417,6 +382,7 @@ presentation in the weave, and how it should be treated during tangling.\n\
                 ignore_remainder_of_line(&s);
                 break;
             case '=':
+            case '#':
                 if (current_chunk != NULL)
                 {
                     fprintf(stderr, 
@@ -434,38 +400,8 @@ presentation in the weave, and how it should be treated during tangling.\n\
                             line_number);
                     exit(1);
                 }
-                break;
-            case '-':
-                switch (*s++)
-                {
-                case 't': /* tangle this */
-                    current_chunk->tangle = 1;
-                    current_chunk->filename = duplicate_line_and_increment(&s);
-                    break;
-                case 'n': /* no weave */
-                    current_chunk->weave = 0;
-                    ignore_remainder_of_line(&s);
-                    break;
-                case 'l': /* language */
-                    if (weave) /* language is only useful to set syntax highlight in weave*/
-                    {
-                        current_chunk->language = duplicate_line_and_increment(&s);
-                        if (current_chunk->language == NULL)
-                        {
-                            fprintf(stderr,
-                                    "Error: expected code chunk language on line %d.\n",
-                                    line_number);
-                            exit(1);
-                        }
-                    }
-                    else ignore_remainder_of_line(&s);
-                    break; 
-                default:
-                    fprintf(stderr,
-                            "Error: unknown flag '-%c' on line %d\n",
-                            *(s - 1), line_number);
-                    exit(1);
-                }
+            
+                if (*(s - 1) == '#') current_chunk->tangle = 1;
                 break;
             case '\n':
             case '\0':
@@ -487,17 +423,10 @@ presentation in the weave, and how it should be treated during tangling.\n\
                 memset(buffer, 0, b - buffer);
                 b = buffer;
                 break;
-            case '*':
             case '{':
                 if (current_chunk == NULL) break; /* invocation in prose ignored while extracting */
                 else 
                 {
-                    b += sprintf(b, &CTRL);
-                    if (*(s - 1) == '*') 
-                    {
-                        b += sprintf(b, "*");
-                        ++s;
-                    }
                     b += sprintf(b, "{");
             
                     /* invocation in code chunk added to chunk->children while extracting */
@@ -517,7 +446,6 @@ presentation in the weave, and how it should be treated during tangling.\n\
                     else list_append(current_chunk->children, l);
                 } 
                 break;
-            /* shell command expansions were handled earlier */
             default:
                 if (*(s - 1) == ATSIGN)
                 {
@@ -526,37 +454,26 @@ presentation in the weave, and how it should be treated during tangling.\n\
                     break;
                 }
                 fprintf(stderr, 
-                        "Error: Unrecognized control sequence 'ATSIGN%c' on line %d\n", 
-                        *(s - 1), line_number);
+                        "Error: Unrecognized control sequence '%c%c' on line %d\n", 
+                        ATSIGN, *(s - 1), line_number);
                 exit(1);
             }
             
         }
     }
-
-    if (tangle)
+    for(; tangles != NULL; tangles = tangles->successor)
     {
-        for(; tangles != NULL; tangles = tangles->successor)
+        FILE * f;
+        code_chunk * c = tangles->chunk;
+        f = fopen(c->filename, "w");
+        if (f == NULL)
         {
-            FILE * f;
-            code_chunk * c = tangles->chunk;
-            f = fopen(c->filename, "w");
-            if (f == NULL)
-            {
-                fprintf(stderr,
-                        "Warning: failed to open file '%s', skipping tangle '%s'\n",
-                        c->filename, c->name);
-                continue;
-            }
-            code_chunk_print(f, d, c, "", 0);
-            fclose(f);
+            fprintf(stderr,
+                    "Warning: failed to open file '%s', skipping tangle '%s'\n",
+                    c->filename, c->name);
+            continue;
         }
+        code_chunk_print(f, d, c, "", 0);
+        fclose(f);
     }
-
-    if (weave)
-    {
-        
-        //fwrite(source, 1, file_size, stdout);
-    }
-
 }

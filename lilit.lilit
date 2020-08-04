@@ -1,22 +1,22 @@
-# lilip: the little literate program transpiler
+# lilit: the little literate program tangler
 
-Inspired by the many formidable "*web" literate programming tools, `lilip` aims
+Inspired by the many formidable "*web" literate programming tools, `lilit` aims
 to provide the absolute bare minimum of functionality needed to enable writing
-programs in this style.  Specifically, `lilip` will parse literate source code
-marked up with simple control sequences in order to extract embedded machine
-source code (tangle) and interpolate cross reference links into the literate
-source (weave).  `lilip` knows nothing about the machine source code language,
-has no runtime configuration, and makes as few assumptions as possible about
-the typesetting markup used for prose passages.  By modifying a few lines of
-`lilip`s literate source code, the program can be easily adapted to use any
-typesetting markup language for the generated cross references. [smu
-markdown][github.com/Gottox/smu] is produced by default.
-
-`lilip`s control markup consists of just eight control sequences:
+programs in a literate programming style.  Specifically, `lilit` will parse
+literate source code marked up with simple control sequences in order to
+extract embedded machine source code (i.e. `lilit` will "tangle" machine source
+code from literate source code).  `lilit` knows nothing about the machine
+source code language, has no runtime configuration, and makes as few
+assumptions as possible about the typesetting markup used for prose passages.
+Furthermore, `lilit` provides no functionality for weaving, i.e. producing
+typesetting markup from the literate source code. This functionality is not
+essential for literate programming, which is about organization and
+communication rather than typesetting and generating cross references (see for
+example http://akkartik.name/post/literate-programming).  
 
 @:~
 
-~=help text
+~=markup help text
 const char * help =
 "Control sequences: \n\
 \n\
@@ -29,102 +29,70 @@ except for flags which must appear inside of a code chunk.\n\
                               This is useful if your machine source has lots of\n\
                               @ signs.\n\
 \n\
-@=chunk name                  Begin a chunk declaration. The chunk name is set\n\
-                              to the remainder of the line after the = excluding\n\
-                              leading and trailing white space.\n\
+@=chunk name                  Begin a regular chunk declaration.\n\
 \n\
-@-FLAG                        Set the flag named FLAG (see below).\n\
+@#chunk name                  Begin a tangle chunk declaration. This is similar\n\
+                              to a regular chunk, except the name of the chunk\n\
+                              is also interpreted as a file name, and the chunk\n\
+                              is recursively expanded into the file with that\n\
+                              name, overwriting any existing file.\n\
 \n\
 @                             End a chunk declaration. The @ must be immediately\n\
                               followed by a newline character or the end of the \n\
                               file without intervening white space.\n\
 \n\
-@{chunk invocation}           Paste in a chunk (tangle) or link to it (weave).\n\
-\n\
-@*{chunk invocation}          As above, but paste the contents of the chunk\n\
-                              while weaving as well as linking.\n\
-\n\
-@(shell command expansion)    Expand a shell command into the file and continue\n\
-                              processing the expanded file recursively.\n\
+@{chunk invocation}           Invoke a chunk to be recursively expanded into any\n\
+                              tangled output files.\n\
 \n\
 @@                            Escape sequence. A literal @ sign with no special\n\
-                              meaning to lilip that will be copied as an @ to\n\
+                              meaning to lilit that will be copied as an @ to\n\
                               any output tangled or woven documents.\n\
 \n\
-Flags:\n\
-\n\
-These can appear during a code chunk definition to set options regarding its\n\
-presentation in the weave, and how it should be treated during tangling.\n\
-\n\
-\n\
--t filename                   Indicate this is an outline of a file to tangle.\n\
-                              The code in this chunk and all its children will\n\
-                              be output to the given file, overwriting it if it\n\
-                              already exists. \n\
-\n\
--n                            Suppresses inclusion of this chunk in the weave.\n\
-                              This is overridden if the chunk is @*{invoked}\n\
-                              with a dereference star.\n\
-\n\
--l LANG                       Indicates the language for syntax highlighting\n\
-                              if different from the parent chunk. It should be\n\
-                              explicitly specified for any top level chunks to\n\
-                              tangle.\n\
 ";
 ~
 
-~=overview
-~-t lilip.l.c
-~{globals}
-~{includes}
-~{forward declarations}
-~{data types}
-~{functions}
+~#lilit.c
+~{definitions}
 
 int main(int argc, char ** argv)
 {
-    int tangle, weave;
-    char * source;
-    char * buffer;
-    int file_size;
-    dict * d;
-    list * tangles;
-~{help text}
-
-    ~{parse command line arguments}
-
-    if (! (tangle || weave)) return 0; /* nothing to do! */
-
-    ~{load file into `char * source`}
-
-    buffer = malloc(file_size + 1); /* for temporary storage */
-    memset(buffer, 0, file_size + 1);
-
-    d = dict_new(128); /* for storing chunks */
-
+    ~{setup}
     ~{extract code chunks}
-
-    if (tangle)
-    {
-        ~{output code chunks recursively}
-    }
-
-    if (weave)
-    {
-        ~{extract cross references}
-        ~{echo source with cross references added}
-    }
-
+    ~{output tangle chunks recursively}
 }
 ~
 
 The approach flows as follows:
-- If not currently building a code chunk, scan until you find a definition.
-- When a code chunk definition begins, and make a new code chunk to hold it.
-- Parse any special flags within the code chunk.
-- Otherwise, copy the input to the buffer until the code chunk ends, then
-  duplicate the contents of the buffer to the code chunk.
-- Repeat until you reach the end of the file.
+- Scan the literate source until you find a chunk definition.
+- When a code chunk definition begins, make a new code chunk object to store it.
+- Copy the source data to a buffer until the code chunk ends
+- When the end of chunk sequence is found, duplicate the buffer to the code
+  chunk object, and save the code chunk in an associative array with its name
+  as the key.
+- Additionally, if the code chunk is marked for tangling, save it in a linked
+  list. This is useful later to quickly iterate over all the tangle chunks.
+- Repeat until you reach the end of the source and have captured all the chunks.
+
+~=setup
+~{variables}
+~{parse command line arguments}
+~{load file into `char * source`}
+~{allocate additional memory}
+~
+
+~=variables
+int file_size;
+char * source;
+char * buffer;
+dict * d;
+list * tangles;
+~
+
+~=allocate additional memory
+buffer = malloc(file_size + 1); /* for temporary storage */
+memset(buffer, 0, file_size + 1);
+d = dict_new(128); /* for storing chunks */
+~
 
 ~=extract code chunks
 {
@@ -140,15 +108,13 @@ The approach flows as follows:
         {
         ~{extraction case: control string change}
         ~{extraction case: new code chunk definition}
-        ~{extraction case: code chunk flag}
         ~{extraction case: end of code chunk}
         ~{extraction case: chunk invocation}
-        /* shell command expansions were handled earlier */
         default:
             ~{extraction case: escape sequence}
             fprintf(stderr, 
-                    "Error: Unrecognized control sequence 'ATSIGN%c' on line %d\n", 
-                    *(s - 1), line_number);
+                    "Error: Unrecognized control sequence '%c%c' on line %d\n", 
+                    ATSIGN, *(s - 1), line_number);
             exit(1);
         }
         
@@ -282,6 +248,7 @@ case ':':
 
 ~=extraction case: new code chunk definition
 case '=':
+case '#':
     if (current_chunk != NULL)
     {
         fprintf(stderr, 
@@ -299,41 +266,8 @@ case '=':
                 line_number);
         exit(1);
     }
-    break;
-~
 
-~=extraction case: code chunk flag
-case '-':
-    switch (*s++)
-    {
-    case 't': /* tangle this */
-        current_chunk->tangle = 1;
-        current_chunk->filename = duplicate_line_and_increment(&s);
-        break;
-    case 'n': /* no weave */
-        current_chunk->weave = 0;
-        ignore_remainder_of_line(&s);
-        break;
-    case 'l': /* language */
-        if (weave) /* language is only useful to set syntax highlight in weave*/
-        {
-            current_chunk->language = duplicate_line_and_increment(&s);
-            if (current_chunk->language == NULL)
-            {
-                fprintf(stderr,
-                        "Error: expected code chunk language on line %d.\n",
-                        line_number);
-                exit(1);
-            }
-        }
-        else ignore_remainder_of_line(&s);
-        break; 
-    default:
-        fprintf(stderr,
-                "Error: unknown flag '-%c' on line %d\n",
-                *(s - 1), line_number);
-        exit(1);
-    }
+    if (*(s - 1) == '#') current_chunk->tangle = 1;
     break;
 ~
 
@@ -361,17 +295,10 @@ case '\0':
 ~
 
 ~=extraction case: chunk invocation
-case '*':
 case '{':
     if (current_chunk == NULL) break; /* invocation in prose ignored while extracting */
     else 
     {
-        b += sprintf(b, &CTRL);
-        if (*(s - 1) == '*') 
-        {
-            b += sprintf(b, "*");
-            ++s;
-        }
         b += sprintf(b, "{");
 
         /* invocation in code chunk added to chunk->children while extracting */
@@ -400,10 +327,6 @@ if (*(s - 1) == ATSIGN)
     b += sprintf(b, &ATSIGN);
     break;
 }
-~
-
-~=echo source with cross references added
-//fwrite(source, 1, file_size, stdout);
 ~
 
 ~=load file into `char * source`
@@ -437,9 +360,6 @@ if (*(s - 1) == ATSIGN)
 #include <stddef.h>
 ~
 
-~=forward declarations
-~
-
 The ***_new functions enforce a few invariants: a `code_chunk` must always have
 a name, and a `list` must always have a `code_chunk`.
 
@@ -452,7 +372,6 @@ typedef struct CodeChunk
     char * contents;
     int tangle;
     char * filename;
-    int weave;
     char * language;
     struct CodeChunk * parent;
     list * children;
@@ -466,7 +385,6 @@ code_chunk * code_chunk_new(char * name)
     chunk->contents = NULL;
     chunk->tangle   = 0;
     chunk->filename = NULL;
-    chunk->weave    = 1;
     chunk->language = NULL;
     chunk->parent   = NULL;
     chunk->children = NULL;
@@ -563,8 +481,6 @@ code_chunk * dict_get(dict * d, char * name)
 ~
 
 ~=parse command line arguments
-tangle = 1;
-weave = 1;
 if (argc < 2 || *argv[1] == '-' /* assume -h */) 
 {
     printf("%s", help);
@@ -580,7 +496,7 @@ char * filename = argv[1];
 ~{code chunk print}
 ~
 
-~=output code chunks recursively
+~=output tangle chunks recursively
 for(; tangles != NULL; tangles = tangles->successor)
 {
     FILE * f;
@@ -682,10 +598,19 @@ const char CTRL = 7; /* ascii ^G, aka BEL */
  * some stable character to prevent bugs when tangling and weaving. It is
  * assumed that ascii 7 (^G, BEL) will never occur in any source code file,
  * so we can transliterate ATSIGNs to 7 without having to worry about escapes.
- * If anyone ever tries to run `lilip` on a file with actual ascii 7 embedded in
+ * If anyone ever tries to run `lilit` on a file with actual ascii 7 embedded in
  * the text, it will undoubtedly cause errors. If this ever happens, the
  * solution would be to detect actual ascii 7 while extracting and embed some
  * kind of escape sequence.
  */
 int line_number = 0;
 ~
+
+~=definitions
+~{includes}
+~{globals}
+~{data types}
+~{functions}
+~{markup help text}
+~
+
