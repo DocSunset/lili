@@ -1,21 +1,21 @@
 # lilit: the little literate program tangler
 
-Inspired by the many formidable "*web" literate programming tools, `lilit` aims
-to provide the absolute bare minimum of functionality needed to enable writing
-programs in a literate programming style.  Specifically, `lilit` will parse
-literate source code marked up with simple control sequences in order to
+Inspired by the many formidable "\*web" literate programming tools, `lilit`
+aims to provide the absolute bare minimum of functionality needed to enable
+writing programs in a literate programming style.  Specifically, `lilit` will
+parse literate source code marked up with simple control sequences in order to
 extract embedded machine source code (i.e. `lilit` will "tangle" machine source
 code from literate source code).  `lilit` knows nothing about the machine
-source code language, has no runtime configuration, and makes as few
+source code language, has no runtime configuration or flags, and makes as few
 assumptions as possible about the typesetting markup used for prose passages.
 Furthermore, `lilit` provides no functionality for weaving, i.e. producing
 typesetting markup from the literate source code. This functionality is not
 essential for literate programming, which is about organization and
-communication rather than typesetting and generating cross references (see for
-example http://akkartik.name/post/literate-programming).  
+communication rather than typesetting and generating cross references (see
+[this article](http://akkartik.name/post/literate-programming) for example).  
 
+```c
 @:~
-
 ~='markup help text'
 const char * help =
 "Control sequences: \n\
@@ -46,14 +46,20 @@ ATSIGN{chunk invocation}      Invoke a chunk to be recursively expanded into any
 \n\
 ATSIGNATSIGN                  Escape sequence. A literal ATSIGN sign with no\n\
                               special meaning to lilit that will be copied as an\n\
-                              ATSIGN to any output tangled or woven documents.\n\
-\n\
+                              ATSIGN to any output tangled documents.\n\
 ";
 ~
+```
+
+## Program Overview
+
+The remainder of this document (which is the literate source code for `lilit`)
+describes the implementation of this tool.  
 
 The program takes two passes over the data: extraction and output.
 
-~#lilit.c
+```c
+~#'lilit.c'
 ~{definitions}
 
 int main(int argc, char ** argv)
@@ -63,7 +69,19 @@ int main(int argc, char ** argv)
     ~{output tangle chunks recursively}
 }
 ~
+```
 
+## Code Chunk Extraction
+
+Extraction proceeds mostly character by character, breaking out into inner
+subroutines when an ATSIGN is encountered.
+
+While extracting code chunks, anytime a newline character is encountered the
+global variable `line_number` is incremented. `line_number` is currently only
+used when printing error messages to help the user find the location of the
+error.
+
+```c
 ~='extract code chunks'
 {
     char * s = source;
@@ -76,10 +94,8 @@ int main(int argc, char ** argv)
         }
         else if (*s == ATSIGN)
         {
-            /* ATSIGNs are converted to CTRL so that we can find them again
-             * later even in case ATSIGN is changed to some other character
-             * in the interim */
-            *s++ = CTRL; /* set ATSIGN to CTRL and increment s */
+            ~{keep track of changing ATSIGNs}
+            ++s;
 
             if (*s == '=' || *s == '#')
             {
@@ -94,7 +110,141 @@ int main(int argc, char ** argv)
     }
 }
 ~
+```
 
+Changing the `ATSIGN` character is straightforward to understand, so here it is
+in full.
+
+```c
+~='change ATSIGN'
+if  (  *s == ':' 
+    || *s == '=' 
+    || *s == '#' 
+    || *s == '\n' 
+    || *s == '{' 
+    )
+{
+    fprintf(stderr,
+            "Error: cannot redefine ATSIGN to a character used in control sequences on line %d\n",
+            line_number);
+    exit(1);
+}
+else ATSIGN = *s;
+~
+```
+
+Although changing ATSIGN is simple, allowing ATSIGN to be dynamically changed
+does introduce a bit of complexity.  Code chunk invocations are rediscovered
+when outputting tangles.  Suppose that ATSIGN is changed at the beginning of
+the file to '!'.  All of the code invocations in the first half of the document
+use ATSIGN = '!'.  Then ATSIGN is redefined to '&', and the code chunks in the
+latter half of the program use '&'. When its time to output the tangle, the
+variable ATSIGN will still be equal to '&', so if the output subroutine is
+looking for ATSIGN it will miss all of the code invocations from the first half
+of the file, which were invoked with a '!'.
+
+To resolve this issue, ATSIGNs are converted to CTRL so that we can find them
+again later even in case ATSIGN is changed to some other character in the
+interim. CTRL is chosen to be a character unlikely to appear in any source
+code.
+
+```c
+~='keep track of changing ATSIGNs'
+*s = CTRL; /* set ATSIGN to CTRL and increment s */
+~
+```
+
+The inner chunk extraction subroutine works similarly to the outer one, but
+does the actual work of extracting a single chunk and recording it for easy
+access when outputting tangles.
+
+For reference, here is the chunk data structure:
+
+```c
+~='code chunk struct'
+typedef struct CodeChunk
+{
+    char * name;
+    list * contents;
+    int tangle;
+} code_chunk;
+
+/* every code chunk must have a name */
+code_chunk * code_chunk_new(char * name)
+{
+    code_chunk * chunk = malloc(sizeof(code_chunk));
+    chunk->name     = name;
+    chunk->contents = NULL;
+    chunk->tangle   = 0;
+    return chunk;
+}
+~
+```
+
+Extracting the chunk means filling the contents list with null-terminated lines
+of code. Rather than duplicating each line into newly allocated strings, the
+lines are instead null-terminated in place by editing the source buffer via
+`*s`. So each link in the list is initialized by copying `s` when it points to
+the beginning of the line, and later the line will be terminated when a newline
+character is found.
+
+When the terminating `ATSIGN` is found, the chunk is added to the global chunk
+dictionary `d`, and if the chunk was marked for tangling, also to the global
+list `tangles`. (Actually neither `d` nor `tangles` are strictly global, but
+rather are declared in the `main` function.)
+
+```c
+~='extract chunk'
+/* s points to the character after ATSIGN/CTRL on entry */
+int tangle = *s++ == '#'; /* 'ATSIGN#' means tangle */
+char terminus = *s++; /* chunk name should be 'wrapped' in "matching" *characters* */
+code_chunk * c = code_chunk_new(extract_name(s, terminus, 1));
+c->tangle = tangle;
+
+while (*s++ != '\n') {} /* scan `s` to one past the end of line */
+char * start_of_line = s;
+
+for (; *s; ++s)
+{
+    if (*s == ATSIGN) 
+    {
+        ~{keep track of changing ATSIGNs}
+        ++s;
+        if (*s == ATSIGN) ++s; /* escape, skip over the second ATSIGN */
+                               /* so it won't be turned into a CTRL*/
+        else if (*s == '\n' || *s == '\0')
+        {
+            /* end and record chunk */
+            if (*(s - 2) != '\0')
+            /* if the ATSIGN was on a line with other content */
+            {
+                /* set the ATSIGN/CTRL to null 
+                 * this terminates the final line if the ATSIGN was on it */
+                *(s - 1) = '\0'; 
+                list_append(&c->contents, (void *)(start_of_line)); /* append current line to list */
+            }
+            dict_add(d, c);
+            if (c->tangle) list_append(&tangles, (void *)c);
+            break;
+        }
+    }
+    else if (*s == '\n')
+    {
+        ++line_number;
+        *s = '\0'; /* end the current line */
+        list_append(&c->contents, (void *)(start_of_line)); /* append current line to list */
+        start_of_line = s + 1;
+    }
+}
+~
+```
+
+## Code Tangling and Output
+
+Each code chunk recorded in the list of chunks to tangle is output to a file
+named the same as the code chunk:
+
+```c
 ~='output tangle chunks recursively'
 for(; tangles != NULL; tangles = tangles->successor)
 {
@@ -112,15 +262,159 @@ for(; tangles != NULL; tangles = tangles->successor)
     fclose(f);
 }
 ~
+```
 
+Outputting tangle chunks is done mainly by `code_chunk_print`, which calls
+itself recursively. The bulk of this function is spent handling the expansion
+of code chunks invoked within the current code chunk, as well as dealing with
+escape sequences. With this expansion handling abstracted away, it's clearer
+that the function simply iterates over the lines of content in the chunk,
+printing them one at a time with a newline added.
+
+```c
+~='code chunk print'
+void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent, int indented)
+{
+    list * l = c->contents;
+    /* https://stackoverflow.com/questions/17983005/c-how-to-read-a-string-line-by-line */
+    for (; l != NULL; l = l->successor)
+    {
+        char * control;
+        char * s = l->data;
+        if (!indented) fprintf(f, "%s", indent);
+        if ((control = strchr(s, CTRL)) != NULL) 
+        {
+            ~{handle code invocations and escape sequences}
+        }
+        else fprintf(f, "%s\n", s); /* print a whole line with no control */
+        indented = 0;
+    }
+}
+~
+```
+
+A control character can appear anywhere on the line, and may reflect an escape
+sequence or a code invocation. We need to print whatever is on the line before
+the control character, ensure that escaped characters are printed normally 
+without the control character escaping them, expand any code invocations, and
+ensure that any code after an invocation is also printed normally.
+
+Furthermore, when expanding code chunks we need to ensure that the level of
+indentation is propogated to each line of the expanded chunk, otherwise the
+code would be malformed in languages where indentation is syntactic such as
+python.
+
+```c
+~='handle code invocations and escape sequences'
+while ((control = strchr(s, CTRL)) != NULL)
+/* while there are invocations on this line */
+{
+    ~{print whatever is before the control}
+    ~{handle escape sequences}
+
+    /* at this point we know the control character must indicate a code invocation */
+    ~{expand the code invocation}
+
+    s = strchr(s, '}') + 1; /* advance s to point after the invocation */
+}
+if (strlen(s) != 0) fprintf(f, "%s\n", s); /* print remainder of line */
+~
+```
+
+Printing the lead up to the control character is done by temporarily
+null-terminating the string at the position of the control character.
+
+```c
+~='print whatever is before the control'
+*control = '\0';
+fprintf(f, "%s", s);
+*control = CTRL;
+~
+```
+
+If an escape sequence is detected, the string pointer is shifted up to point at
+the escaped character, and the loop is continued. If there are any more control
+characters on the line, the escaped character will be printed along with any
+other code that preceeds the next control character when the loop passes over
+~{print whatever is before the control} again. Otherwise, if there are no more
+control characters, program flow will break out of the loop and the escaped
+character will be printed along with anything else on the line trailing the
+escape-control.
+
+```c
+~='handle escape sequences'
+if (*(control + 1) != '{')
+{
+    s = control + 1;
+    continue;
+}
+~
+```
+
+If the control character is not part of an escape sequence, it must be part of 
+a code invocation. 
+Finally, the chunk is looked up in the chunk dictionary, and the print function
+is called recursively to expand it. Notably, because the indentation on the 
+current line was already printed during ~{print whatever is before the control},
+the `indented` flag is initialized to `true` so that the indentation won't be
+printed a second time when expanding the first line of `next_c`.
+
+```c
+~='expand the code invocation'
+{
+    char * name = extract_name(strchr(control, '{') + 1, '}', 0);
+    code_chunk * next_c = dict_get(d, name);
+    if (next_c == NULL)
+    {
+        fprintf(stderr,
+                "Warning: invocation of chunk '%s' could not be found\n",
+                name);
+    }
+    else 
+    {
+        ~{build the next indent}
+
+        code_chunk_print(f, d, next_c, next_indent, 1);
+    }
+}
+~
+```
+
+Before expanding the chunk, the current level of indentation
+is determined by concatenating any indentation on the current line with
+indentation passed in by the caller.
+
+```c
+~='build the next indent'
+char * next_indent;
+char tmp;
+char * indent_end = s; 
+while (isspace(*indent_end)) ++indent_end;
+tmp = *indent_end;
+*indent_end = '\0';
+next_indent = malloc(strlen(s) + strlen(indent) + 1);
+strcpy(next_indent, s); 
+strcat(next_indent, indent);
+*indent_end = tmp;
+~
+```
+
+## Details
+
+This function is used both to get the name of chunk when extracting chunks, and
+to get the name of an invocation when outputting tangled code. `s` points to the
+first character of the name, and terminus is the character expected to mark
+the end of the name (e.g. '}' in the case of code invocations)
+
+```c
 ~='extract name'
-char * extract_name(char * s, char terminus)
+char * extract_name(char * s, char terminus, int on_line)
 {
     char * destination;
     char * selection_start = s;
     char * selection_end = strchr(selection_start, terminus);
-    char * end_of_line = strchr(selection_start, '\n');
-    if (selection_end > end_of_line || selection_end == NULL)
+
+    if ((on_line && selection_end > strchr(selection_start, '\n')) || selection_end == NULL)
     {
         fprintf(stderr,
                 "Error: unterminated name on line %d\n",
@@ -141,164 +435,35 @@ char * extract_name(char * s, char terminus)
     return destination;
 }
 ~
+```
 
-~='change ATSIGN'
-if  (  *s == ':' 
-    || *s == '=' 
-    || *s == '#' 
-    || *s == '\n' 
-    || *s == '{' 
-    )
-{
-    fprintf(stderr,
-            "Error: cannot redefine ATSIGN to a character used in control sequences on line %d\n",
-            line_number);
-    exit(1);
-}
-else ATSIGN = *s;
+```c
+~='definitions'
+~{includes}
+
+~{globals}
+
+~{data types}
+
+~{functions}
+
+~{markup help text}
 ~
+```
 
-~='extract chunk'
-/* s points to ATSIGN/CTRL on entry */
-int tangle = *s++ == '#'; /* ATSIGN# means tangle */
-char terminus = *s++; /* chunk name should be 'wrapped' in "matching" *characters* */
-code_chunk * c = code_chunk_new(extract_name(s, terminus));
-while (*s++ != '\n') {} /* ignore remainder of line after chunk name */
+```c
+~='setup'
+~{variables}
 
-c->contents = list_new((void *)s);
-c->tangle = tangle;
+~{parse command line arguments}
 
-if (c->name == NULL)
-{
-    fprintf(stderr,
-            "Error: expected code chunk name on line %d.\n",
-            line_number);
-    exit(1);
-}
+~{load file into `char * source`}
 
-for (; *s; ++s)
-{
-    if (*s == ATSIGN) 
-    {
-        *s = CTRL;
-        if (*(s + 1) == ATSIGN) ++s; /* escape, ignore the second ATSIGN */
-    }
-    else if (*s == '\n')
-    {
-        ++line_number;
-        if (*(s - 1) == CTRL)
-        {
-            *(s - 1) = '\0'; 
-            dict_add(d, c);
-            if (c->tangle)
-            {
-                list_append(&tangles, (void *)c);
-            }
-            c == NULL;
-            break;
-        }
-        *s++ = '\0';
-        list_append(&c->contents, (void *)s);
-    }
-}
-if (c)
-{
-    dict_add(d, c);
-    if (c->tangle)
-    {
-        list_append(&tangles, (void *)c);
-    }
-}
+~{allocate additional memory}
 ~
+```
 
-~='code chunk print'
-void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent, int indented)
-{
-    list * l = c->contents;
-    /* https://stackoverflow.com/questions/17983005/c-how-to-read-a-string-line-by-line */
-    for (; l != NULL; l = l->successor)
-    {
-        char * invocation;
-        char * s = l->data;
-        if (!indented) fprintf(f, "%s", indent);
-
-        invocation = strchr(s, CTRL);
-        while (invocation != NULL)
-        {
-            code_chunk * next_c;
-            char tmp;
-            char * name;
-            char * indent_end;
-            char * next_indent;
-
-            /* print whatever is before the invocation */
-            *invocation = '\0';
-            fprintf(f, "%s", s);
-            *invocation = CTRL;
-
-            /* check if the CTRL character is from an escape sequence */
-            if (*(invocation + 1) != '{')
-            {
-                s = invocation + 1;
-                invocation = strchr(s, CTRL);
-                continue;
-            }
-
-            /* build the next indent */
-            indent_end = s; while (isspace(*indent_end)) ++indent_end;
-            tmp = *indent_end;
-            *indent_end = '\0';
-            next_indent = malloc(strlen(s) + strlen(indent) + 1);
-            strcpy(next_indent, s); 
-            strcat(next_indent, indent);
-            *indent_end = tmp;
-
-            /* print the invocation itself */
-            invocation = strchr(invocation, '{') + 1; 
-            name = extract_name(invocation, '}');
-            next_c = dict_get(d, name);
-            if (next_c == NULL)
-            {
-                fprintf(stderr,
-                        "Warning: invocation of chunk '%s' could not be found\n",
-                        name);
-            }
-            else code_chunk_print(f, d, next_c, next_indent, 1);
-
-            s = strchr(s, '}') + 1;
-            invocation = strchr(s, CTRL);
-        }
-        /* print a whole line with no invocation, or the remainder of the line
-         * following any number of invocations */
-        fprintf(f, "%s\n", s); 
-        indented = 0;
-    }
-}
-~
-
-~='load file into `char * source`'
-{
-    FILE * source_file = fopen(filename, "r");
-    if (source_file == NULL)
-    {
-        fprintf(stderr, "Error: could not open file %s\n", filename);
-        exit(1);
-    }
-    
-    /* get file size */
-    fseek(source_file, 0L, SEEK_END);
-    file_size = ftell(source_file);
-    rewind(source_file);
-    
-    /* copy file into memory */
-    source = malloc(1 + file_size); /* one added for null termination */
-    fread(source, 1, file_size, source_file); 
-    fclose(source_file);
-    
-    source[file_size] = 0;
-}
-~
-
+```c
 ~='includes'
 #include <ctype.h>
 #include <string.h>
@@ -306,29 +471,13 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent, int ind
 #include <stdio.h>
 #include <stddef.h>
 ~
+```
 
-The ***_new functions enforce a few invariants: a `code_chunk` must always have
-a name, and a `list` must always have a `code_chunk`.
-
+```c
 ~='data types'
 typedef struct List list;
 
-typedef struct CodeChunk
-{
-    char * name;
-    list * contents;
-    int tangle;
-} code_chunk;
-
-
-code_chunk * code_chunk_new(char * name)
-{
-    code_chunk * chunk = malloc(sizeof(code_chunk));
-    chunk->name     = name;
-    chunk->contents = NULL;
-    chunk->tangle   = 0;
-    return chunk;
-}
+~{code chunk struct}
 
 struct List
 {
@@ -336,6 +485,7 @@ struct List
     struct List * successor;
 };
 
+/* a list must be initialized with data */
 list * list_new(void * d)
 {
     list * l = malloc(sizeof(list));
@@ -401,9 +551,10 @@ code_chunk * dict_get(dict * d, char * name)
     }
     return NULL;
 }
-
 ~
+```
 
+```c
 ~='parse command line arguments'
 if (argc < 2 || *argv[1] == '-' /* assume -h */) 
 {
@@ -412,11 +563,15 @@ if (argc < 2 || *argv[1] == '-' /* assume -h */)
 }
 char * filename = argv[1];
 ~
+```
 
+```c
 ~='functions'
 ~{extract name}
+
 ~{code chunk print}
 ~
+```
 
 Since the control sequence leader character can be changed with 'ATSIGN:',
 it's necessary to swap all the ATSIGNs that are found while extracting to
@@ -428,35 +583,50 @@ the text, it will undoubtedly cause errors. If this ever happens, the
 solution would be to detect actual ascii 7 while extracting and embed some
 kind of escape sequence.
 
+```c
 ~='globals'
 char ATSIGN = 64; /* ascii for at sign */
 const char CTRL = 7; /* ascii ^G, aka BEL */
 int line_number = 0;
 ~
+```
 
-~='definitions'
-~{includes}
-~{globals}
-~{data types}
-~{functions}
-~{markup help text}
-~
-
-~='setup'
-~{variables}
-~{parse command line arguments}
-~{load file into `char * source`}
-~{allocate additional memory}
-~
-
+```c
 ~='variables'
 int file_size;
 char * source;
 dict * d;
 list * tangles = NULL;
 ~
+```
 
+```c
+~='load file into `char * source`'
+{
+    FILE * source_file = fopen(filename, "r");
+    if (source_file == NULL)
+    {
+        fprintf(stderr, "Error: could not open file %s\n", filename);
+        exit(1);
+    }
+    
+    /* get file size */
+    fseek(source_file, 0L, SEEK_END);
+    file_size = ftell(source_file);
+    rewind(source_file);
+    
+    /* copy file into memory */
+    source = malloc(1 + file_size); /* one added for null termination */
+    fread(source, 1, file_size, source_file); 
+    fclose(source_file);
+    
+    source[file_size] = 0;
+}
+~
+```
+
+```c
 ~='allocate additional memory'
 d = dict_new(128); /* for storing chunks */
 ~
-
+```

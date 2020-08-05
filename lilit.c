@@ -3,9 +3,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stddef.h>
+
 char ATSIGN = 64; /* ascii for at sign */
 const char CTRL = 7; /* ascii ^G, aka BEL */
 int line_number = 0;
+
 typedef struct List list;
 
 typedef struct CodeChunk
@@ -15,7 +17,7 @@ typedef struct CodeChunk
     int tangle;
 } code_chunk;
 
-
+/* every code chunk must have a name */
 code_chunk * code_chunk_new(char * name)
 {
     code_chunk * chunk = malloc(sizeof(code_chunk));
@@ -31,6 +33,7 @@ struct List
     struct List * successor;
 };
 
+/* a list must be initialized with data */
 list * list_new(void * d)
 {
     list * l = malloc(sizeof(list));
@@ -97,13 +100,13 @@ code_chunk * dict_get(dict * d, char * name)
     return NULL;
 }
 
-char * extract_name(char * s, char terminus)
+char * extract_name(char * s, char terminus, int on_line)
 {
     char * destination;
     char * selection_start = s;
     char * selection_end = strchr(selection_start, terminus);
-    char * end_of_line = strchr(selection_start, '\n');
-    if (selection_end > end_of_line || selection_end == NULL)
+
+    if ((on_line && selection_end > strchr(selection_start, '\n')) || selection_end == NULL)
     {
         fprintf(stderr,
                 "Error: unterminated name on line %d\n",
@@ -123,68 +126,66 @@ char * extract_name(char * s, char terminus)
     *selection_end = terminus;
     return destination;
 }
+
 void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent, int indented)
 {
     list * l = c->contents;
     /* https://stackoverflow.com/questions/17983005/c-how-to-read-a-string-line-by-line */
     for (; l != NULL; l = l->successor)
     {
-        char * invocation;
+        char * control;
         char * s = l->data;
         if (!indented) fprintf(f, "%s", indent);
-
-        invocation = strchr(s, CTRL);
-        while (invocation != NULL)
+        if ((control = strchr(s, CTRL)) != NULL) 
         {
-            code_chunk * next_c;
-            char tmp;
-            char * name;
-            char * indent_end;
-            char * next_indent;
-
-            /* print whatever is before the invocation */
-            *invocation = '\0';
-            fprintf(f, "%s", s);
-            *invocation = CTRL;
-
-            /* check if the CTRL character is from an escape sequence */
-            if (*(invocation + 1) != '{')
+            while ((control = strchr(s, CTRL)) != NULL)
+            /* while there are invocations on this line */
             {
-                s = invocation + 1;
-                invocation = strchr(s, CTRL);
-                continue;
+                *control = '\0';
+                fprintf(f, "%s", s);
+                *control = CTRL;
+                if (*(control + 1) != '{')
+                {
+                    s = control + 1;
+                    continue;
+                }
+            
+                /* at this point we know the control character must indicate a code invocation */
+                {
+                    char * name = extract_name(strchr(control, '{') + 1, '}', 0);
+                    code_chunk * next_c = dict_get(d, name);
+                    if (next_c == NULL)
+                    {
+                        fprintf(stderr,
+                                "Warning: invocation of chunk '%s' could not be found\n",
+                                name);
+                    }
+                    else 
+                    {
+                        char * next_indent;
+                        char tmp;
+                        char * indent_end = s; 
+                        while (isspace(*indent_end)) ++indent_end;
+                        tmp = *indent_end;
+                        *indent_end = '\0';
+                        next_indent = malloc(strlen(s) + strlen(indent) + 1);
+                        strcpy(next_indent, s); 
+                        strcat(next_indent, indent);
+                        *indent_end = tmp;
+                
+                        code_chunk_print(f, d, next_c, next_indent, 1);
+                    }
+                }
+            
+                s = strchr(s, '}') + 1; /* advance s to point after the invocation */
             }
-
-            /* build the next indent */
-            indent_end = s; while (isspace(*indent_end)) ++indent_end;
-            tmp = *indent_end;
-            *indent_end = '\0';
-            next_indent = malloc(strlen(s) + strlen(indent) + 1);
-            strcpy(next_indent, s); 
-            strcat(next_indent, indent);
-            *indent_end = tmp;
-
-            /* print the invocation itself */
-            invocation = strchr(invocation, '{') + 1; 
-            name = extract_name(invocation, '}');
-            next_c = dict_get(d, name);
-            if (next_c == NULL)
-            {
-                fprintf(stderr,
-                        "Warning: invocation of chunk '%s' could not be found\n",
-                        name);
-            }
-            else code_chunk_print(f, d, next_c, next_indent, 1);
-
-            s = strchr(s, '}') + 1;
-            invocation = strchr(s, CTRL);
+            if (strlen(s) != 0) fprintf(f, "%s\n", s); /* print remainder of line */
         }
-        /* print a whole line with no invocation, or the remainder of the line
-         * following any number of invocations */
-        fprintf(f, "%s\n", s); 
+        else fprintf(f, "%s\n", s); /* print a whole line with no control */
         indented = 0;
     }
 }
+
 const char * help =
 "Control sequences: \n\
 \n\
@@ -214,8 +215,7 @@ ATSIGN{chunk invocation}      Invoke a chunk to be recursively expanded into any
 \n\
 ATSIGNATSIGN                  Escape sequence. A literal ATSIGN sign with no\n\
                               special meaning to lilit that will be copied as an\n\
-                              ATSIGN to any output tangled or woven documents.\n\
-\n\
+                              ATSIGN to any output tangled documents.\n\
 ";
 
 int main(int argc, char ** argv)
@@ -224,12 +224,14 @@ int main(int argc, char ** argv)
     char * source;
     dict * d;
     list * tangles = NULL;
+    
     if (argc < 2 || *argv[1] == '-' /* assume -h */) 
     {
         printf("%s", help);
         exit(0);
     }
     char * filename = argv[1];
+    
     {
         FILE * source_file = fopen(filename, "r");
         if (source_file == NULL)
@@ -250,6 +252,7 @@ int main(int argc, char ** argv)
         
         source[file_size] = 0;
     }
+    
     d = dict_new(128); /* for storing chunks */
     {
         char * s = source;
@@ -262,52 +265,50 @@ int main(int argc, char ** argv)
             }
             else if (*s == ATSIGN)
             {
-                /* ATSIGNs are converted to CTRL so that we can find them again
-                 * later even in case ATSIGN is changed to some other character
-                 * in the interim */
-                *s++ = CTRL; /* set ATSIGN to CTRL and increment s */
+                *s = CTRL; /* set ATSIGN to CTRL and increment s */
+                ++s;
     
                 if (*s == '=' || *s == '#')
                 {
-                    /* s points to ATSIGN/CTRL on entry */
-                    int tangle = *s++ == '#'; /* ATSIGN# means tangle */
+                    /* s points to the character after ATSIGN/CTRL on entry */
+                    int tangle = *s++ == '#'; /* 'ATSIGN#' means tangle */
                     char terminus = *s++; /* chunk name should be 'wrapped' in "matching" *characters* */
-                    code_chunk * c = code_chunk_new(extract_name(s, terminus));
-                    while (*s++ != '\n') {} /* ignore remainder of line after chunk name */
-                    
-                    c->contents = list_new((void *)s);
+                    code_chunk * c = code_chunk_new(extract_name(s, terminus, 1));
                     c->tangle = tangle;
                     
-                    if (c->name == NULL)
-                    {
-                        fprintf(stderr,
-                                "Error: expected code chunk name on line %d.\n",
-                                line_number);
-                        exit(1);
-                    }
+                    while (*s++ != '\n') {} /* scan `s` to one past the end of line */
+                    char * start_of_line = s;
                     
                     for (; *s; ++s)
                     {
                         if (*s == ATSIGN) 
                         {
-                            *s = CTRL;
-                            if (*(s + 1) == ATSIGN) ++s; /* escape, ignore the second ATSIGN */
+                            *s = CTRL; /* set ATSIGN to CTRL and increment s */
+                            ++s;
+                            if (*s == ATSIGN) ++s; /* escape, skip over the second ATSIGN */
+                                                   /* so it won't be turned into a CTRL*/
+                            else if (*s == '\n' || *s == '\0')
+                            {
+                                /* end and record chunk */
+                                if (*(s - 2) != '\0')
+                                /* if the ATSIGN was on a line with other content */
+                                {
+                                    /* set the ATSIGN/CTRL to null 
+                                     * this terminates the final line if the ATSIGN was on it */
+                                    *(s - 1) = '\0'; 
+                                    list_append(&c->contents, (void *)(start_of_line)); /* append current line to list */
+                                }
+                                dict_add(d, c);
+                                if (c->tangle) list_append(&tangles, (void *)c);
+                                break;
+                            }
                         }
                         else if (*s == '\n')
                         {
                             ++line_number;
-                            if (*(s - 1) == CTRL)
-                            {
-                                *(s - 1) = '\0'; 
-                                dict_add(d, c);
-                                if (c->tangle)
-                                {
-                                    list_append(&tangles, (void *)c);
-                                }
-                                break;
-                            }
-                            *s = '\0';
-                            list_append(&c->contents, (void *)(s + 1));
+                            *s = '\0'; /* end the current line */
+                            list_append(&c->contents, (void *)(start_of_line)); /* append current line to list */
+                            start_of_line = s + 1;
                         }
                     }
                 }
