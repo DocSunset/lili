@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stddef.h>
+#include <stdarg.h>
 
 char ATSIGN = 64; /* ascii for at sign */
 const char CTRL = 7; /* ascii ^G, aka BEL */
@@ -98,6 +99,16 @@ code_chunk * dict_get(dict * d, char * name)
     return NULL;
 }
 
+void exit_fail_if(int condition, char * message, ...)
+{
+    if (!condition) return;
+    va_list args;
+    va_start(args, message);
+    fprintf(stderr, message, args);
+    va_end(args);
+    exit(EXIT_FAILURE);
+}
+
 char * extract_name(char * s, char terminus)
 {
     char * destination;
@@ -111,23 +122,15 @@ char * extract_name(char * s, char terminus)
             selection_end = s;
             break;
         }
-        else if (*s == '\n' || *s == '\0')
-        {
-            fprintf(stderr,
+        else exit_fail_if ((*s == '\n' || *s == '\0'),
                     "Error: unterminated name on line %d\n",
                     line_number);
-            exit(1);
-        }
         ++s;
     }
 
-    if (selection_end == selection_start) 
-    {
-        fprintf(stderr,
+    exit_fail_if ((selection_end == selection_start),
                 "Error: empty name on line %d\n",
                 line_number);
-        exit(1);
-    }
 
     *selection_end = '\0';
     destination = malloc(strlen(selection_start) + 1);
@@ -235,18 +238,16 @@ int main(int argc, char ** argv)
     
     if (argc < 2 || *argv[1] == '-' /* assume -h */) 
     {
-        printf("%s", help);
-        exit(0);
+        fprintf(stderr, "%s", help);
+        exit(EXIT_SUCCESS);
     }
     char * filename = argv[1];
     
     {
         FILE * source_file = fopen(filename, "r");
-        if (source_file == NULL)
-        {
-            fprintf(stderr, "Error: could not open file %s\n", filename);
-            exit(1);
-        }
+        exit_fail_if ((source_file == NULL), 
+                "Error: could not open file %s\n", 
+                filename);
         
         /* get file size */
         fseek(source_file, 0L, SEEK_END);
@@ -312,32 +313,19 @@ int main(int argc, char ** argv)
                                 break;
                             }
                         }
-                        else if (*s == '\0')
-                        {
-                            fprintf(stderr,
+                        else exit_fail_if ((*s == '\0'),
                                     "Error: file ended during definition of chunk '%s'\n",
                                     c->name);
-                            exit(1);
-                        }
                         ++s;
                     }
                 }
                 else if (*s == ':')
                 {
                     ++s;
-                    if  (  *s == ':' 
-                        || *s == '=' 
-                        || *s == '#' 
-                        || *s == '\n' 
-                        || *s == '{' 
-                        )
-                    {
-                        fprintf(stderr,
+                    exit_fail_if (( *s == ':' || *s == '=' || *s == '#' || *s == '\n' || *s == '{' ),
                                 "Error: cannot redefine ATSIGN to a character used in control sequences on line %d\n",
                                 line_number);
-                        exit(1);
-                    }
-                    else ATSIGN = *s;
+                    ATSIGN = *s;
                 }
             }
             ++s;
