@@ -38,6 +38,7 @@ list * list_new(void * d)
     list * l = malloc(sizeof(list));
     l->data = d;
     l->successor = NULL;
+    return l;
 }
 
 void list_append(list ** lst, void * addend)
@@ -61,7 +62,7 @@ unsigned long hash(unsigned char *str)
     unsigned long hash = 5381;
     int c;
 
-    while (c = *str++) hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+    while ((c = *str++)) hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
 
     return hash;
 }
@@ -78,17 +79,18 @@ dict * dict_new(size_t size)
     d->array = malloc(size * sizeof(list));
     memset(d->array, (size_t)NULL, size * sizeof(list));
     d->size = size;
+    return d;
 }
 
 void dict_add(dict * d, code_chunk * c)
 {
-    unsigned long h = hash(c->name) % d->size;
+    unsigned long h = hash((unsigned char *)c->name) % d->size;
     list_append(&(d->array[h]), (void *) c);
 }
 
 code_chunk * dict_get(dict * d, char * name)
 {
-    unsigned long h = hash(name) % d->size;
+    unsigned long h = hash((unsigned char *)name) % d->size;
     list * l = d->array[h];
     while (l != NULL)
     {
@@ -195,7 +197,11 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent)
 }
 
 const char * help =
-"Control sequences: \n\
+"lilit: the little literate programming tool -- version %s\n\
+\n\
+    USAGE: %s file\n\
+\n\
+    lilit extracts machine source code from literate source code.\n\
 \n\
 Control sequences are permitted to appear at any point in the source file, \n\
 except for flags which must appear inside of a code chunk. All control sequences\n\
@@ -238,7 +244,7 @@ int main(int argc, char ** argv)
     
     if (argc < 2 || *argv[1] == '-' /* assume -h */) 
     {
-        fprintf(stderr, "%s", help);
+        fprintf(stderr, help, VERSION, argv[0]);
         exit(EXIT_SUCCESS);
     }
     char * filename = argv[1];
@@ -346,4 +352,5 @@ int main(int argc, char ** argv)
         code_chunk_print(f, d, c, "");
         fclose(f);
     }
+    return 0;
 }
