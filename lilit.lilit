@@ -1,18 +1,180 @@
-# lilit: the little literate program tangler
+# lilit: the little literate programming tool
 
-Inspired by the many formidable "\*web" literate programming tools, `lilit`
-aims to provide the absolute bare minimum of functionality needed to enable
-writing programs in a literate programming style.  Specifically, `lilit` will
-parse literate source code marked up with simple control sequences in order to
-extract embedded machine source code (i.e. `lilit` will "tangle" machine source
-code from literate source code).  `lilit` knows nothing about the machine
-source code language, has no runtime configuration or flags, and makes as few
-assumptions as possible about the typesetting markup used for prose passages.
-Furthermore, `lilit` provides no functionality for weaving, i.e. producing
-typesetting markup from the literate source code. This functionality is not
-essential for literate programming, which is about organization and
-communication rather than typesetting and generating cross references (see
-[this article](http://akkartik.name/post/literate-programming) for example).  
+`lilit` is a simple command line program written in portable dependency-free C
+that aims to provide the absolute bare minimum of functionality needed to
+enable writing programs in a literate programming style.  All `lilit` does is
+scan a plain-text file for a handful of control sequences, extract source code
+delimited by those control sequences, and output source code files by
+recursively expanding the chunks of code thus found.  This minimalist approach
+ensures users of `lilit` can depend on it to continue working reliably and
+easily modify the source code to tailor the program to their specific needs.  
+
+# what is literate programming?
+
+>Literate programming is a very simple idea: Write a book. And oh, by the
+>way, the book has the actual executable source code in it.
+
+>Timothy Daly, 2013. "[Literate Programming in the Large](https://youtu.be/Av0PQDVTP4A)"
+
+Literate programming (first described by [Donald Knuth in his paper introducing
+the idea](http://www.literateprogramming.com/knuthweb.pdf)) is a style of
+computer programming that prioritizes the relationship between the program
+writer and program reader.  The essence of this approach is the position that
+computer programs should be written primarily as a form of communication
+between humans and only incidentally as a means of instructing computing
+machines to perform a useful job.  
+
+Few would disagree that excellent computer code, in addition to whatever other
+positive qualities it may possess, should be easy for any programmer to read
+and understand.  Conventionally, this ideal is approached by carefully choosing
+variable and class names, breaking up complex subroutines into well-named
+functions, writing unit tests that demonstrate how a given subroutine is used,
+and so on;  basically, the code itself is written to be self-describing.  After
+all, the source code has the final word on what the program does and how it
+does it.  Comments, documentation, and any other things besides are all
+irreconcilably seperate from the actual logic of the program that the code
+describes, and they even run the risk of misleading the reader of a program. As
+Robert Martin wrote, "[the proper use of comments is to compensate for our
+failure to express ourself in
+code.](https://www.goodreads.com/book/show/3735293-clean-code)"
+
+On the other hand, there is much that the code itself may struggle to
+communicate or which may even be impossible for the code to communicate.
+Programming languages are constrained by the systems they are meant to control,
+by the systems that translate from source code to machine code, and so on.
+These constraints in turn influence the writers of the source code, the ideas
+that they can express through the language, and the ways in which they can
+present those ideas.  Source code excels at expressing what the program does
+and how it does it. Code often struggles when it comes to communicating why it
+does what it does and why it does it in that particular way rather than taking
+some other approach.  Almost every programming language provides some mechanism
+for embedding natural language comments in the source code, precisely to help
+programmers to express that which the code cannot.  Documentation is also
+increasingly integrated in programming language tooling.  But both comments and
+documentation remain subordinate to the source code. They serve to help the
+reader decode the source code.  The source code itself remains supreme, and
+often also remains opaque, esoteric, and difficult to understand.
+
+Literate programming proposes to invert this relationship: rather than write a
+program with some explanations embedded in it, you craft a piece of writing
+with a program embedded in it.  Rather than write comments and documentation
+interspersed in source code, write source code interspersed in a natural
+language narrative.  Rather than write a program primarily to control the
+behavior of a computer and only incidentally to be read by humans, write a
+piece of prose primarily to communicate with humans and only incidentally
+to be executed by a computer.  This is the theory of literate programming.  
+
+In order to write a literate program, the expressive power of most programming
+languages is likely insufficient.  For this reason, the practice of literate
+programming usually involves the use of specialized tooling that allows for
+expressing source code embedded in a piece of literature.  These tools allow
+the source code to be ordered and explained using the structure that most
+naturally expresses the meaning of the program, rather than the order and
+structure that is most convenient to the compiler or interpreter.  This
+involves, for instance, allowing code chunks to be expressed in any order.
+
+# should I write literate programs?
+
+Proponents of literate programming argue that the style provides numerous
+benefits.  The prioritization of communication over execution allows
+programmers unfamiliar with a program to understand and take ownership of it,
+allowing new team members in a collaborative environment to become productive
+contributors to the project more quickly.  Literate programs are
+also purportedly more resilient to the passage of time and changing of hands,
+as new maintainers of a program are endowed with the knowledge of not only what
+and how a program works but also why and what for.  Furthermore, writing the
+natural language exposition of a literate program naturally forces the writer
+to not only better comprehend the program they are writing but also to write a
+program that is fundamentally more comprehensible.  As Donald Knuth writes, "my
+programs are not only explained better than ever before; they also are better
+programs, because the new methodology encourages me to do a better job."
+Literate programming also seems especially well suited to environments in which
+understanding the program is as important as the program itself, such as in
+academic research where a program is part of research findings.  
+
+However, despite the purported benefits, literate programming has not seen much
+mainstream adoption.  Although there have been numerous remarkable success
+stories (notably [one book written in a literate programming style that won an
+Academy Award](https://www.pbrt.org/)), most programmers do not program in a
+literate style.  This may be explained in part by the disadvantages of literate
+programming.  
+
+As Knuth recognized in the paper introducing the style, literate programming
+practice usually entails writing literate programs in a document that combines
+typesetting markup, literate programming specific markup, and source code.
+This introduces the opportunity for syntax errors in three different languages
+in addition to normal program logic errors, with the associated increase in the
+complexity of debugging a literate program. More generally, literate
+programming practice introduces additional tooling that necessarily adds some
+complexity to writing programs.
+
+Programming in a literate style requires authoring and maintaining not only the
+program itself but also the literary work in which the program is embedded.  As
+the program changes, it is essential to ensure that the associated literature
+is updated with discipline lest it drift out of sync with the actual program
+logic it is meant to describe. The cost of maintaining the prose in addition to
+the program can be magnified in environments where the requirements for the
+program and/or its design frequently change drastically.  
+
+However, the most damning challenge to the adoption of literate programming
+comes not from the tooling nor the maintenance of prose, but simply from the
+fact that programming is hard, writing is hard, and very few people are good at
+both.  This means that programmers with aptitude for literate programming are
+naturally somewhat rare.
+
+In summary:
+
+Pros:
+
+- Improved readability decreases time for new programmers to integrate into collaborative environments
+- Program maintenance is easier especially as old maintainers become separated from the project
+- Authoring prose alongside code encourages writing higher quality programs
+- Emphasis on communication is a natural fit for e.g. programs produced as part of research
+
+Cons:
+
+- Additional tooling imposes increased debugging and programming environment complexity
+- Prose introduces additional maintenance overhead, especially when requirements change quickly
+- Writing good programs is hard enough without also having to write good literature
+
+Literate programming may be less useful for beginners, hobbyists, and other
+amateurs, who may benefit less from its advantages, and in environments where
+program requirements are not well defined. In these contexts, a pseudo-literate
+programming style relying on comments, revision commits, and documentation may
+be sufficient.  However, if program requirements are reasonably well defined,
+if it is common for newcomers to contribute to a project, if code maintainers
+are likely to change over time, if the people involved in a project are
+reasonably good writers as well as programmers, and especially if the full and
+varied meanings of the source code are as important as the code itself, it may
+be worthwhile to consider adopting a literate programming style.
+
+# how does `lilit` work?
+
+The remainder of this document (the literate source code for `lilit`) describes
+the functionality and implementation of `lilit`.
+
+`lilit` knows nothing about the machine source code language, has no runtime
+configuration or flags, and makes as few assumptions as possible about the
+typesetting markup used for prose passages.  Furthermore, `lilit` provides no
+functionality for weaving, i.e.  producing typesetting markup from the literate
+source code. This functionality is not essential for literate programming,
+which is about organization and communication rather than typesetting and
+generating cross references (see [this
+article](http://akkartik.name/post/literate-programming) for example).  If the
+writer wishes to produce a typeset document from the source code, typesetting
+markup may be written directly in the lilit-formatted document and the
+typesetting system can be run directly on this document.
+
+Despite its intentional limitations, `lilit` provides enough functionality to
+enable writing in a literate programming style.  Code chunks can be presented
+to the reader in any order, and code chunks can be referred to by name inside
+of other code chunks, allowing for high levels of abstraction in the
+presentation of the program.  When outputting source code, chunks are
+recursively expanded into the output source files while retaining indentation
+for compatibility with any programming language.
+
+The help text explains the control sequences `lilit` searches for to extract
+the machine code embedded in your natural-language document:
 
 ```c
 @:~
@@ -27,7 +189,6 @@ const char * help =
 Control sequences are permitted to appear at any point in the source file, \n\
 except for flags which must appear inside of a code chunk. All control sequences\n\
 begin with a special character called ATSIGN, which is set to '@' by default.\n\
-\n\
 \n\
 ATSIGN:new control character  Redefines ATSIGN to whatever immediately follows\n\
                               the : sign. This is useful if your machine source\n\
@@ -59,9 +220,6 @@ ATSIGNATSIGN                  Escape sequence. A literal ATSIGN sign with no\n\
 ```
 
 ## Program Overview
-
-The remainder of this document (which is the literate source code for `lilit`)
-describes the implementation of this tool.  
 
 The program takes two passes over the data: extraction and output.
 
@@ -141,7 +299,7 @@ use ATSIGN = '!'.  Then ATSIGN is redefined to '&', and the code chunks in the
 latter half of the program use '&'. When its time to output the tangle, the
 variable ATSIGN will still be equal to '&', so if the output subroutine is
 looking for ATSIGN it will miss all of the code invocations from the first half
-of the file, which were invoked with a '!'.
+of the file, which were invoked with '!'.
 
 To resolve this issue, ATSIGNs are converted to CTRL so that we can find them
 again later even in case ATSIGN is changed to some other character in the
@@ -150,7 +308,7 @@ code.
 
 ```c
 ~='keep track of changing ATSIGNs'
-*s = CTRL; /* set ATSIGN to CTRL and increment s */
+*s = CTRL; /* set ATSIGN to CTRL s */
 ~
 ```
 
@@ -204,9 +362,14 @@ char terminus = *s++; /* chunk name should be 'wrapped' in "matching" *character
 code_chunk * c = code_chunk_new(extract_name(s, terminus));
 c->tangle = tangle;
 
-while (*s++ != '\n') {} /* scan `s` to one past the end of line */
-c->contents = s;
-final_newline_candidate = s - 1;
+while (*s++ != '\n') /* scan `s` to one past the end of line */
+{
+    exit_fail_if(*s == '\0', 
+            "Error: file ended before definition of chunk '%s'\n",
+            c->name);
+}
+c->contents = s; /* s is the first character of the chunk definition */
+final_newline_candidate = s;
 
 while(1)
 {
@@ -265,11 +428,11 @@ for(; tangles != NULL; tangles = tangles->successor)
 ```
 
 Outputting tangle chunks is done mainly by `code_chunk_print`, which calls
-itself recursively. This function proceeds character by character, handling
-code invocations and escape sequences specially. When a newline is encountered,
-this also causes indentation to be printed. The start of each line is also
-noted to facilitate keeping track of indentation when recursively expanding
-chunks.
+itself recursively. This function proceeds character by character. Most
+characters are simply echoed to the output file.  Code invocations and escape
+sequences are handled specially. When a newline is encountered, this also
+causes indentation to be printed. The start of each line is also noted to
+facilitate keeping track of indentation when recursively expanding chunks.
 
 ```c
 ~='code chunk print'
@@ -301,6 +464,10 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent)
                     code_chunk_print(f, d, next_c, next_indent);
                 }
                 while(*s != '}') ++s; /* scan s to the '}' */
+                /* we don't need to exit_fail_if we find the end of file during
+                 * this loop, because extract_name would have already found
+                 * this error */
+                
                 /* fall through to the outer ++s so s points after the '}' */
             }
         }
@@ -310,7 +477,8 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent)
             if (*s == '\n') 
             {
                 /* we can assume there is always another line after a '\n'
-                 * because there is never a '\n' on the final line */
+                 * because on the final line the '\n' will always be found 
+                 * after the CTRL */
                 start_of_line = s + 1;
                 fprintf(f, "%s", indent); /* print indent on the new line */
             }
@@ -345,13 +513,7 @@ strcat(next_indent, start_of_line); /* append space from current line to next_in
 ## Extra Details
 
 Read on if you are interested in further details, such as the definition of the
-list and dict datatypes, the helper function `extract_name`, and other
-minutiae.
-
-This function is used both to get the name of chunk when extracting chunks, and
-to get the name of an invocation when outputting tangled code. `s` points to the
-first character of the name, and terminus is the character expected to mark
-the end of the name (e.g. '}' in the case of code invocations)
+list and dict datatypes, the helper functions, and other minutiae.
 
 ```c
 ~='data types'

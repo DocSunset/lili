@@ -178,6 +178,10 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent)
                     code_chunk_print(f, d, next_c, next_indent);
                 }
                 while(*s != '}') ++s; /* scan s to the '}' */
+                /* we don't need to exit_fail_if we find the end of file during
+                 * this loop, because extract_name would have already found
+                 * this error */
+                
                 /* fall through to the outer ++s so s points after the '}' */
             }
         }
@@ -187,7 +191,8 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent)
             if (*s == '\n') 
             {
                 /* we can assume there is always another line after a '\n'
-                 * because there is never a '\n' on the final line */
+                 * because on the final line the '\n' will always be found 
+                 * after the CTRL */
                 start_of_line = s + 1;
                 fprintf(f, "%s", indent); /* print indent on the new line */
             }
@@ -206,7 +211,6 @@ const char * help =
 Control sequences are permitted to appear at any point in the source file, \n\
 except for flags which must appear inside of a code chunk. All control sequences\n\
 begin with a special character called ATSIGN, which is set to '@' by default.\n\
-\n\
 \n\
 ATSIGN:new control character  Redefines ATSIGN to whatever immediately follows\n\
                               the : sign. This is useful if your machine source\n\
@@ -280,7 +284,7 @@ int main(int argc, char ** argv)
             }
             else if (*s == ATSIGN)
             {
-                *s = CTRL; /* set ATSIGN to CTRL and increment s */
+                *s = CTRL; /* set ATSIGN to CTRL s */
                 ++s;
     
                 if (*s == '=' || *s == '#')
@@ -292,9 +296,14 @@ int main(int argc, char ** argv)
                     code_chunk * c = code_chunk_new(extract_name(s, terminus));
                     c->tangle = tangle;
                     
-                    while (*s++ != '\n') {} /* scan `s` to one past the end of line */
-                    c->contents = s;
-                    final_newline_candidate = s - 1;
+                    while (*s++ != '\n') /* scan `s` to one past the end of line */
+                    {
+                        exit_fail_if(*s == '\0', 
+                                "Error: file ended before definition of chunk '%s'\n",
+                                c->name);
+                    }
+                    c->contents = s; /* s is the first character of the chunk definition */
+                    final_newline_candidate = s;
                     
                     while(1)
                     {
@@ -305,7 +314,7 @@ int main(int argc, char ** argv)
                         }
                         else if (*s == ATSIGN) 
                         {
-                            *s = CTRL; /* set ATSIGN to CTRL and increment s */
+                            *s = CTRL; /* set ATSIGN to CTRL s */
                             ++s;
                             if (*s == ATSIGN) {} /* escape, skip over the second ATSIGN */
                                                  /* so it won't be turned into a CTRL*/
