@@ -9,7 +9,7 @@ options:
 	@echo "CC       = ${CC}"
 
 lilit.c: lilit.lilit
-	@echo tangling source from 
+	@echo tangling source from $^
 	@lilit lilit.lilit
 
 ${OBJ}: config.mk
