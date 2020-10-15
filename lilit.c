@@ -6,25 +6,8 @@
 #include <stdarg.h>
 
 char ATSIGN = 64; /* ascii for at sign */
-const char CTRL = 7; /* ascii ^G, aka BEL */
 int line_number = 0;
-
-typedef struct CodeChunk
-{
-    char * name;
-    char * contents;
-    int tangle;
-} code_chunk;
-
-/* every code chunk must have a name */
-code_chunk * code_chunk_new(char * name)
-{
-    code_chunk * chunk = malloc(sizeof(code_chunk));
-    chunk->name     = name;
-    chunk->contents = NULL;
-    chunk->tangle   = 0;
-    return chunk;
-}
+const char CTRL = 7; /* ascii ^G, aka BEL */
 
 typedef struct List
 {
@@ -41,6 +24,9 @@ list * list_new(void * d)
     return l;
 }
 
+/* we need a double pointer so that if we are passed lst == NULL we mutate *lst
+ * so that it points to a new list. This happens in dict_add if the new chunk
+ * is hashed into a bucket not already containing a pointer to a list */
 void list_append(list ** lst, void * addend)
 {
     list * a = list_new(addend);
@@ -54,6 +40,23 @@ void list_append(list ** lst, void * addend)
         while (l->successor != NULL) l = l->successor; /* go to the end of l */
         l->successor = a;
     }
+}
+
+typedef struct CodeChunk
+{
+    char * name;
+    list * contents;
+    int tangle;
+} code_chunk;
+
+/* every code chunk must have a name */
+code_chunk * code_chunk_new(char * name)
+{
+    code_chunk * chunk = malloc(sizeof(code_chunk));
+    chunk->name     = name;
+    chunk->contents = NULL;
+    chunk->tangle   = 0;
+    return chunk;
 }
 
 /* http://www.cse.yorku.ca/~oz/hash.html */
@@ -143,61 +146,69 @@ char * extract_name(char * s, char terminus)
 
 void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent)
 {
-    char * s = c->contents;
-    char * start_of_line = s;
-    while (*s != '\0')
+    list * l;
+    for (l = c->contents; l != NULL; l = l->successor)
     {
-        if (*s == CTRL)
+        char * s = l->data;
+        char * start_of_line = s;
+        while (*s != '\0')
         {
-            ++s;
-            if (*s != '{') fputc(*s, f); /* escaped ATSIGN, print it */
-            else /* this must be a code invocation */
+            if (*s == CTRL)
             {
-                char * name = extract_name(++s, '}');
-                code_chunk * next_c = dict_get(d, name);
+                ++s;
+                if (*s != '{') fputc(*s, f); /* escaped ATSIGN, print it */
+                else /* this must be a code invocation */
+                {
+                    char * name = extract_name(++s, '}');
+                    code_chunk * next_c = dict_get(d, name);
 
-                if (next_c == NULL)
-                {
-                    fprintf(stderr,
-                            "Warning: invocation of chunk '%s' could not be found\n",
-                            name);
-                }
-                else 
-                {
-                    char * next_indent;
-                    char tmp;
-                    char * indent_end = start_of_line; 
-                    while (isspace(*indent_end)) ++indent_end;
-                    tmp = *indent_end;
-                    *indent_end = '\0'; /* temporarily terminate line at first non-space char */
-                    next_indent = malloc(strlen(start_of_line) + strlen(indent) + 1);
-                    strcpy(next_indent, indent); /* copy current indent to next_indent */
-                    strcat(next_indent, start_of_line); /* append space from current line to next_indent */
-                    *indent_end = tmp; /* restore first non-space char */
-            
-                    code_chunk_print(f, d, next_c, next_indent);
-                }
-                while(*s != '}') ++s; /* scan s to the '}' */
-                /* we don't need to exit_fail_if we find the end of file during
-                 * this loop, because extract_name would have already found
-                 * this error */
+                    if (next_c == NULL)
+                    {
+                        fprintf(stderr,
+                                "Warning: '%s' could not be found in invocation within `%s`\n",
+                                name, c->name);
+                    }
+                    else 
+                    {
+                        char * next_indent;
+                        char tmp;
+                        char * indent_end = start_of_line; 
+                        while (isspace(*indent_end)) ++indent_end;
+                        tmp = *indent_end;
+                        *indent_end = '\0'; /* temporarily terminate line at first non-space char */
+                        next_indent = malloc(strlen(start_of_line) + strlen(indent) + 1);
+                        strcpy(next_indent, indent); /* copy current indent to next_indent */
+                        strcat(next_indent, start_of_line); /* append space from current line to next_indent */
+                        *indent_end = tmp; /* restore first non-space char */
                 
-                /* fall through to the outer ++s so s points after the '}' */
+                        code_chunk_print(f, d, next_c, next_indent);
+                    }
+                    while(*s != '}') ++s; /* scan s to the '}' */
+                    /* we don't need to exit_fail_if we find the end of file during
+                     * this loop, because extract_name would have already found
+                     * this error */
+                    
+                    /* fall through to the outer ++s so s points after the '}' */
+
+                    /* we should probably free name here */
+                }
             }
-        }
-        else 
-        {
-            fputc(*s, f);
-            if (*s == '\n') 
+            else 
             {
-                /* we can assume there is always another line after a '\n'
-                 * because on the final line the '\n' will always be found 
-                 * after the CTRL */
-                start_of_line = s + 1;
-                fprintf(f, "%s", indent); /* print indent on the new line */
+                fputc(*s, f);
+                if (*s == '\n') 
+                {
+                    /* we can assume there is always another line after a '\n'
+                     * because on the final line the '\n' will have been turned
+                     * into a '\0' to terminate the string */
+                    start_of_line = s + 1;
+                    fprintf(f, "%s", indent); /* print indent on the new line */
+                }
             }
+            ++s;
         }
-        ++s;
+        /* if there are more contents to append, separate them with a newline */
+        if (l->successor != NULL) fputc('\n', f); 
     }
 }
 
@@ -208,21 +219,29 @@ const char * help =
 \n\
     lilit extracts machine source code from literate source code.\n\
 \n\
-Control sequences are permitted to appear at any point in the source file, \n\
-except for flags which must appear inside of a code chunk. All control sequences\n\
-begin with a special character called ATSIGN, which is set to '@' by default.\n\
+All control sequences begin with a special character called ATSIGN, which is \n\
+set to '@' by default.\n\
 \n\
 ATSIGN:new control character  Redefines ATSIGN to whatever immediately follows\n\
                               the : sign. This is useful if your machine source\n\
                               has lots of @ signs, for example.\n\
 \n\
-ATSIGN='chunk name'           Begin a regular chunk declaration.\n\
+ATSIGN='chunk name'           Begin a regular chunk declaration. The chunk name\n\
+                              must be surrounded by matching delimiter\n\
+                              characters, which can be anything. The chunk\n\
+                              definition itself begins on the next line.\n\
 \n\
 ATSIGN#'chunk name'           Begin a tangle chunk declaration. This is similar\n\
                               to a regular chunk, except the name of the chunk\n\
                               is also interpreted as a file name, and the chunk\n\
                               is recursively expanded into the file with that\n\
                               name, overwriting any existing file.\n\
+\n\
+ATSIGN+'chunk name'           Append to a chunk. The code starting on the\n\
+                              next line will be added at the end of the chunk\n\
+                              named by 'chunk name'. If no such chunk exists,\n\
+                              then one will be created. This is useful e.g. for\n\
+                              adding #include directives to the top of a c file.\n\
 \n\
 ATSIGN                        End a chunk declaration. The ATSIGN must be \n\
                               immediately followed by a newline character or the\n\
@@ -287,24 +306,43 @@ int main(int argc, char ** argv)
                 *s = CTRL; /* set ATSIGN to CTRL s */
                 ++s;
     
-                if (*s == '=' || *s == '#')
+                if (*s == '=' || *s == '#' || *s == '+')
                 {
                     /* s points to the character after ATSIGN/CTRL on entry */
                     char * final_newline_candidate;
-                    int tangle = *s++ == '#'; /* 'ATSIGN#' means tangle */
+                    int tangle = *s == '#'; /* 'ATSIGN#' means tangle */
+                    int append = *s++ == '+'; /* 'ATSIGN+' means append */
                     char terminus = *s++; /* chunk name should be 'wrapped' in "matching" *characters* */
-                    code_chunk * c = code_chunk_new(extract_name(s, terminus));
+                    char * name = extract_name(s, terminus);
+                    
+                    int new_chunk = 1;
+                    code_chunk * c = dict_get(d, name);
+                    if (append)
+                    {
+                        if (c == NULL) c = code_chunk_new(name);
+                        else new_chunk = 0; /* should probably free name here */
+                    }
+                    else 
+                    {
+                        if (c != NULL) 
+                            fprintf(stderr, 
+                                "warning, redefinition of chunk %s on line %d\n", 
+                                name, line_number);
+                        c = code_chunk_new(name);
+                    }
                     c->tangle = tangle;
                     
                     while (*s++ != '\n') /* scan `s` to one past the end of line */
                     {
                         exit_fail_if(*s == '\0', 
-                                "Error: file ended before definition of chunk '%s'\n",
+                                "Error: file ended before beginning the definition of chunk '%s'\n",
                                 c->name);
                     }
-                    c->contents = s; /* s is the first character of the chunk definition */
-                    final_newline_candidate = s;
+                    ++line_number;
                     
+                    /* s points to the first character of the chunk definition */
+                    list_append(&(c->contents), (void *)s);
+                    final_newline_candidate = s;
                     while(1)
                     {
                         if (*s == '\n')
@@ -323,7 +361,7 @@ int main(int argc, char ** argv)
                                 /* end and record chunk */
                                 *final_newline_candidate = '\0'; /* yes, it was the final newline */
                                                                  /* null terminate the contents */
-                                dict_add(d, c);
+                                if (new_chunk) dict_add(d, c);
                                 if (c->tangle) list_append(&tangles, (void *)c);
                                 break;
                             }
@@ -337,7 +375,7 @@ int main(int argc, char ** argv)
                 else if (*s == ':')
                 {
                     ++s;
-                    exit_fail_if (( *s == ':' || *s == '=' || *s == '#' || *s == '\n' || *s == '{' ),
+                    exit_fail_if (( *s == ':' || *s == '=' || *s == '#' || *s == '\n' || *s == '{'  || *s == '+'),
                                 "Error: cannot redefine ATSIGN to a character used in control sequences on line %d\n",
                                 line_number);
                     ATSIGN = *s;
