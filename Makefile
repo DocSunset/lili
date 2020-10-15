@@ -40,4 +40,13 @@ uninstall:
 	@echo removing executable file from ${DESTDIR}${PREFIX}/bin
 	@rm -f ${DESTDIR}${PREFIX}/bin/lilit
 
-.PHONY: all options clean dist install uninstall
+test: lilit
+	@./lilit lilit.lilit
+	@mv lilit.c lilit.bak
+	@./lilit lilit.lilit
+	@echo running test
+	@cmp lilit.c lilit.bak
+	@rm lilit.bak
+
+
+.PHONY: all options clean dist install uninstall test
