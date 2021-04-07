@@ -820,3 +820,13 @@ list * tangles = NULL;
 d = dict_new(128); /* for storing chunks */
 // ~
 ```
+
+# tests
+
+The main test case for `lilit` is its own literate source (i.e. this document).
+Producing `lilit.c` by tangling `lilit.lilit` exercises all of the control
+sequences specified in the help text. `lilit` should produce a source file when
+run, and the same resulting source file every time it is run. This result
+should be the same regardless of which version of lilit is run. These assertions
+are tested in the Makefile included in this repository. Simple run `make test`
+to ensure `lilit` is working as expected.

@@ -44,13 +44,37 @@ uninstall:
 	@echo removing executable file from ${DESTDIR}${PREFIX}/bin
 	@rm -f ${DESTDIR}${PREFIX}/bin/lilit
 
-test: lilit
+test_makes_file: lilit
+	@mv lilit.c lilit.bak
+	@echo test lilit produces lilit.c
 	@./lilit lilit.lilit
+	@test -f lilit.c
+	@echo success
+	@mv lilit.bak lilit.c
+
+test_same_result: lilit
+	@echo test lilit produces the same result every time
 	@mv lilit.c lilit.bak
 	@./lilit lilit.lilit
-	@echo running test
-	@cmp lilit.c lilit.bak
-	@rm lilit.bak
+	@mv lilit.c lilit.c1
+	@./lilit lilit.lilit
+	@cmp lilit.c lilit.c1
+	@echo success
+	@mv lilit.bak lilit.c
+	@rm lilit.c1
 
+test_agrees_with_installed: lilit
+	@echo test ./lilit produces same result as system lilit
+	@mv lilit.c lilit.bak
+	@./lilit lilit.lilit
+	@mv lilit.c lilit.new
+	@lilit lilit.lilit
+	@cmp lilit.c lilit.new
+	@echo success
+	@mv lilit.bak lilit.c
+	@rm lilit.new
 
-.PHONY: all options clean dist install uninstall test
+test: test_makes_file test_same_result test_agrees_with_installed
+	@echo ran all tests
+
+.PHONY: all options clean dist install uninstall test test_makes_file test_same_result test_agrees_with_installed
