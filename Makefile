@@ -18,9 +18,13 @@ lilit: lilit.c
 	@echo building $@
 	@${CC} ${CFLAGS} ${LDFLAGS} -o $@ lilit.c
 
+lilit.debug: lilit.c
+	@echo building $@
+	@${CC} ${DEBUGFLAGS} ${LDFLAGS} -o $@ lilit.c
+
 clean:
 	@echo cleaning
-	@rm -f lilit ${OBJ} ${LIBOBJ} lilit-${VERSION}.tar.gz
+	@rm -f lilit lilit.debug ${OBJ} ${LIBOBJ} lilit-${VERSION}.tar.gz
 
 dist: clean lilit.c
 	@echo creating dist tarball
