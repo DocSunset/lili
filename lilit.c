@@ -42,6 +42,14 @@ void list_append(list ** lst, void * addend)
     }
 }
 
+typedef enum ContentType {code, reference} content_type;
+
+typedef struct ChunkContents
+{
+    content_type type;
+    void * value;
+} chunck_contents;
+
 typedef struct CodeChunk
 {
     char * name;
@@ -308,30 +316,29 @@ int main(int argc, char ** argv)
     
                 if (*s == '=' || *s == '#' || *s == '+')
                 {
-                    /* s points to the character after ATSIGN/CTRL on entry */
                     char * final_newline_candidate;
-                    int tangle = *s == '#'; /* 'ATSIGN#' means tangle */
-                    int append = *s++ == '+'; /* 'ATSIGN+' means append */
-                    char terminus = *s++; /* chunk name should be 'wrapped' in "matching" *characters* */
-                    char * name = extract_name(s, terminus);
+                    code_chunk * c;
                     
-                    int new_chunk = 1;
-                    code_chunk * c = dict_get(d, name);
-                    if (append)
                     {
-                        if (c == NULL) c = code_chunk_new(name);
-                        else new_chunk = 0; /* should probably free name here */
-                    }
-                    else 
-                    {
-                        if (c != NULL) 
-                            fprintf(stderr, 
-                                "warning, redefinition of chunk %s on line %d\n", 
-                                name, line_number);
-                        c = code_chunk_new(name);
-                    }
-                    c->tangle = tangle;
+                        char type = *s++;
+                        char terminus = *s++; /* chunk name should be 'wrapped' in "matching" *characters* */
+                        char * name = extract_name(s, terminus);
                     
+                        c = dict_get(d, name);
+                        if (type == '+' && c != NULL) {} /* appending to an existing chunk */
+                        else 
+                        {
+                            exit_fail_if(c != NULL,
+                                    "Error: redefinition of chunk %s on line %d\n", 
+                                    name, line_number);
+                            c = code_chunk_new(name);
+                            c->tangle = type == '#';
+                            dict_add(d, c);
+                            if (c->tangle) list_append(&tangles, (void *)c);
+                        }
+                    }
+                    
+                    /* s points to the character after ATSIGN/CTRL on entry */
                     while (*s++ != '\n') /* scan `s` to one past the end of line */
                     {
                         exit_fail_if(*s == '\0', 
@@ -340,9 +347,10 @@ int main(int argc, char ** argv)
                     }
                     ++line_number;
                     
-                    /* s points to the first character of the chunk definition */
                     list_append(&(c->contents), (void *)s);
+                    
                     final_newline_candidate = s;
+                    
                     while(1)
                     {
                         if (*s == '\n')
@@ -358,12 +366,9 @@ int main(int argc, char ** argv)
                                                  /* so it won't be turned into a CTRL*/
                             else if (*s == '\n' || *s == '\0')
                             {
-                                /* end and record chunk */
                                 *final_newline_candidate = '\0'; /* yes, it was the final newline */
                                                                  /* null terminate the contents */
-                                if (new_chunk) dict_add(d, c);
-                                if (c->tangle) list_append(&tangles, (void *)c);
-                                break;
+                                break; /* escape chunk extraction while loop */
                             }
                         }
                         else exit_fail_if ((*s == '\0'),

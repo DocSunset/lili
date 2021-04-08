@@ -365,6 +365,14 @@ For reference, here is the chunk data structure:
 
 ```c
 // ~='code chunk struct'
+typedef enum ContentType {code, reference} content_type;
+
+typedef struct ChunkContents
+{
+    content_type type;
+    void * value;
+} chunck_contents;
+
 typedef struct CodeChunk
 {
     char * name;
@@ -384,65 +392,54 @@ code_chunk * code_chunk_new(char * name)
 // ~
 ```
 
-Extracting the chunk means adding a pointer to a null terminated string to the
-contents list. Rather than duplicating the contents from the file into a newly
-allocated string, the contents are instead null-terminated in place by editing
-the source buffer via `*s`. 
-
-When the chunk definition begins, the new contents pointer is set to the value
-of `s` when it points to the beginning of the first line of code.  When the
-terminal `ATSIGN` is found, the contents are null terminated at the position of
-the newline character on the final line (i.e. the line before the line
-containing the terminal ATSIGN).  Because we won't know whether any given
-newline character is the final one until we reach the next line, we keep track
-of every newline as a candidate final newline. In case the chunk definition is
-empty, we also consider the beginning of the contents pointer as a candidate
-end position. If the chunk is empty, then the contents string will be empty,
-i.e. the `char *` will point to a `\0` character.
-
-Once the contents string is null terminated, it is added to the contents list
-of the chunk. If the chunk was newly defined, it is then added to the global
-chunk dictionary `d`, and if the chunk was marked for tangling, also to the
-global list `tangles`.  (Actually neither `d` nor `tangles` are strictly
-global, but rather are declared in the `main` function.)
+A chunk may be a newly defined passage of code, or a snippet to append to an
+existing chunk.  Extracting a chunk means populating the contents list of the
+new or existing chunk record with a new null-terminated string. Rather than
+duplicating the contents from the file into a newly allocated string, the
+contents are instead null-terminated in place by editing the source buffer via
+`*s`. 
 
 ```c
 // ~='extract chunk'
-/* s points to the character after ATSIGN/CTRL on entry */
 char * final_newline_candidate;
-int tangle = *s == '#'; /* 'ATSIGN#' means tangle */
-int append = *s++ == '+'; /* 'ATSIGN+' means append */
-char terminus = *s++; /* chunk name should be 'wrapped' in "matching" *characters* */
-char * name = extract_name(s, terminus);
+code_chunk * c;
 
-int new_chunk = 1;
-code_chunk * c = dict_get(d, name);
-if (append)
-{
-    if (c == NULL) c = code_chunk_new(name);
-    else new_chunk = 0; /* should probably free name here */
-}
-else 
-{
-    if (c != NULL) 
-        fprintf(stderr, 
-            "warning, redefinition of chunk %s on line %d\n", 
-            name, line_number);
-    c = code_chunk_new(name);
-}
-c->tangle = tangle;
+~{create new chunk or retrieve existing chunk for appending}
 
-while (*s++ != '\n') /* scan `s` to one past the end of line */
-{
-    exit_fail_if(*s == '\0', 
-            "Error: file ended before beginning the definition of chunk '%s'\n",
-            c->name);
-}
-++line_number;
+~{scan to beginning of chunk definition}
 
-/* s points to the first character of the chunk definition */
 list_append(&(c->contents), (void *)s);
+
 final_newline_candidate = s;
+
+~{scan to the end of the chunk and terminate the string}
+// ~
+```
+
+Chunks are terminated by a single ATSIGN followed by a newline; the entire line
+ending with this sequence is ignored, which means the last character in a chunk
+is always the newline character before this line. For this reason, the position
+of each newline encountered while scanning for the end of the chunk is recorded
+in the `final_newline_candidate` variable. 
+
+`final_newline_candidate` is initialized to the same position as the beginning
+of the chunk, so that a chunk with no contents is correctly extracted as an
+empty string.  For example, tangling the following chunk definition should
+produce file which is empy except for a single newline character that is added
+to the end of tangle-output chunks to ensure the file ends with a mewline.
+
+```c
+// ~#'test/a_newline.txt'
+// ~
+```
+
+Scanning for the end of the file therefore consists of simply recording the
+position of newlines until the terminal ATSIGN is located, plus some error
+handling and cruft related to tracking ATSIGNS that I'm planning on refactoring
+out.
+
+```c
+// ~='scan to the end of the chunk and terminate the string'
 while(1)
 {
     if (*s == '\n')
@@ -458,18 +455,66 @@ while(1)
                              /* so it won't be turned into a CTRL*/
         else if (*s == '\n' || *s == '\0')
         {
-            /* end and record chunk */
             *final_newline_candidate = '\0'; /* yes, it was the final newline */
                                              /* null terminate the contents */
-            if (new_chunk) dict_add(d, c);
-            if (c->tangle) list_append(&tangles, (void *)c);
-            break;
+            break; /* escape chunk extraction while loop */
         }
     }
     else exit_fail_if ((*s == '\0'),
                 "Error: file ended during definition of chunk '%s'\n",
                 c->name);
     ++s;
+}
+// ~
+```
+
+Scanning to the beginning of the chunk is even simpler, and basically just has
+to be aware of the possibility that the file is malformed and not to loop
+forever if the file ends before the chunk definition begins.
+
+I guess if the user was a monster this could encounter difficulty were they to
+use a newline as the name delimeter. This could be resolved by moving `s` up to
+the name terminator before this loop.
+
+```c
+// ~='scan to beginning of chunk definition'
+/* s points to the character after ATSIGN/CTRL on entry */
+while (*s++ != '\n') /* scan `s` to one past the end of line */
+{
+    exit_fail_if(*s == '\0', 
+            "Error: file ended before beginning the definition of chunk '%s'\n",
+            c->name);
+}
+++line_number;
+// ~
+```
+
+All that remains is to make a new chunk or retrieve the existing one. Chunks
+can be defined with `=`, `#`, or `+`, for a regular new chunk, and new
+tangle-output, or additional code to append to an existing chunk respectively.
+If `+` is used when the named chunk has not already been defined, this is also
+allowed, in which case a new chunk is created in the same way as if `=` had
+been used.  Redefining an existing chunk is not allowed.
+
+```c
+// ~='create new chunk or retrieve existing chunk for appending'
+{
+    char type = *s++;
+    char terminus = *s++; /* chunk name should be 'wrapped' in "matching" *characters* */
+    char * name = extract_name(s, terminus);
+
+    c = dict_get(d, name);
+    if (type == '+' && c != NULL) {} /* appending to an existing chunk */
+    else 
+    {
+        exit_fail_if(c != NULL,
+                "Error: redefinition of chunk %s on line %d\n", 
+                name, line_number);
+        c = code_chunk_new(name);
+        c->tangle = type == '#';
+        dict_add(d, c);
+        if (c->tangle) list_append(&tangles, (void *)c);
+    }
 }
 // ~
 ```
