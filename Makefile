@@ -50,7 +50,6 @@ test_makes_file: lilit
 	@./lilit lilit.lilit
 	@test -f lilit.c
 	@echo success
-	@mv lilit.bak lilit.c
 
 test_same_result: lilit
 	@echo test lilit produces the same result every time
@@ -60,8 +59,6 @@ test_same_result: lilit
 	@./lilit lilit.lilit
 	@cmp lilit.c lilit.c1
 	@echo success
-	@mv lilit.bak lilit.c
-	@rm lilit.c1
 
 test_agrees_with_installed: lilit
 	@echo test ./lilit produces same result as system lilit
@@ -71,10 +68,10 @@ test_agrees_with_installed: lilit
 	@lilit lilit.lilit
 	@cmp lilit.c lilit.new
 	@echo success
-	@mv lilit.bak lilit.c
-	@rm lilit.new
 
 test: test_makes_file test_same_result test_agrees_with_installed
 	@echo ran all tests
+	@mv lilit.bak lilit.c
+	@rm lilit.new lilit.c1
 
 .PHONY: all options clean dist install uninstall test test_makes_file test_same_result test_agrees_with_installed
