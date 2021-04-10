@@ -296,97 +296,64 @@ loop where the chunks are actually extracted.
     
     while (*s != '\0') 
     {
-        if (*s == '\n')
+        if (*s == ATSIGN) s = extract_chunk(s, d, &tangles, NULL, NULL, NULL);
+        else
         {
-            ++line_number;
-        }
-        else if (*s == ATSIGN)
-        {
-            ~{keep track of changing ATSIGNs}
+            if (*s == '\n') ++line_number;
             ++s;
-
-            if (*s == '=' || *s == '#' || *s == '+')
-            {
-                ~{extract chunk}
-            }
-            else if (*s == ':')
-            {
-                ++s;
-                exit_fail_if (( *s == ':' || *s == '=' || *s == '#' || *s == '\n' || *s == '{'  || *s == '+'),
-                            "Error: cannot redefine ATSIGN to a character used in control sequences on line %d\n",
-                            line_number);
-                ATSIGN = *s;
-            }
         }
-        ++s;
     }
 }
 // ~
 ```
 
-After changing ATSIGN, the scanner will search for the new ATSIGN character, which
-presumably is no longer an `@` but some other character.
-
-Although changing ATSIGN is simple, allowing this change introduces some
-complexity down the line. This is because the program scans for ATSIGN
-characters while tangling the output in order to find code chunk invocations.
-Suppose that ATSIGN is changed at the beginning of the file to '!'.  All of the
-code invocations in the first half of the document use ATSIGN = '!'.  Then
-ATSIGN is redefined to '&', and the code chunks in the latter half of the
-program use '&'. When it's time to output the tangle, the variable ATSIGN will
-still be equal to '&', so if the output subroutine is looking for ATSIGN it
-will miss all of the code invocations from the first half of the file, which
-were invoked with '!'.
-
-To resolve this issue, ATSIGNs are converted to a single unique character,
-CTRL, so that we can find them again later even in case ATSIGN is changed to
-some other character in the interim. All ATSIGNs found in the first scanning
-pass for extraction are converted to CTRL. Then, during the second scanning
-pass for output, the program scans for CTRL instead of ATSIGN. CTRL is chosen
-to be a character unlikely to appear in any source code.
-
-```c
-// ~+'globals'
-const char CTRL = 7; /* ascii ^G, aka BEL */
-// ~
-```
-
-```c
-// ~='keep track of changing ATSIGNs'
-*s = CTRL; /* set ATSIGN to CTRL s */
-// ~
-```
-
-The inner chunk extraction subroutine works similarly to the outer one, but
-does the actual work of extracting a single chunk and recording it for easy
-access when outputting tangles.
-
 For reference, here is the chunk data structure:
 
 ```c
 // ~='code chunk struct'
-typedef enum ContentType {code, reference} content_type;
-
-typedef struct ChunkContents
-{
-    content_type type;
-    void * value;
-} chunck_contents;
+typedef enum ContentType {code, reference} content_t;
 
 typedef struct CodeChunk
 {
     char * name;
+    char * indent;
     list * contents;
-    int tangle;
 } code_chunk;
 
-/* every code chunk must have a name */
+typedef struct ChunkContents
+{
+    char * string;
+    size_t indent_size;
+    code_chunk * reference;
+} chunk_contents;
+
+chunk_contents * code_contents_new(char * code)
+{
+    chunk_contents * c = malloc(sizeof(chunk_contents));
+    c->string = code;
+    c->reference = NULL;
+    return c;
+}
+
+chunk_contents * reference_contents_new(char * indent, size_t size, code_chunk * ref)
+{
+    chunk_contents * c = malloc(sizeof(chunk_contents));
+    c->string = indent;
+    c->indent_size = size;
+    c->reference = ref;
+    return c;
+}
+
+content_t contents_type(chunk_contents * c)
+{
+    if (c->reference == NULL) return code; else return reference;
+}
+
 code_chunk * code_chunk_new(char * name)
 {
     code_chunk * chunk = malloc(sizeof(code_chunk));
     chunk->name     = name;
     chunk->contents = NULL;
-    chunk->tangle   = 0;
     return chunk;
 }
 // ~
@@ -401,18 +368,87 @@ contents are instead null-terminated in place by editing the source buffer via
 
 ```c
 // ~='extract chunk'
-char * final_newline_candidate;
-code_chunk * c;
+char * extract_chunk(char * s, dict * d, list ** tangles, char * possible_end, char * start_of_line, code_chunk * c)
+{
+    char * at_the_atsign = s++;
+    char type = *s++;
+    size_t escape = 0;
+    switch (type)
+    {
+        case '=': case '#': case '+':
+            ~{create new chunk or retrieve existing chunk for appending}
+            ~{scan to beginning of chunk definition}
+            break;
 
-~{create new chunk or retrieve existing chunk for appending}
+        case ':':
+            exit_fail_if (( *s == '=' || *s == '#' || *s == '+' || *s == '{' 
+                         || *s == ':' || *s == '\n'), 
+                    "Error: cannot redefine ATSIGN to a character used in control sequences on line %d\n", line_number);
+            ATSIGN = *s++;
+            /* fall through */
+        case '{':
+            if (c == NULL) /* outside chunk definition */ return s;
+            *at_the_atsign = '\0'; /* terminate previous contents list entry */
+            if (type == '{')
+            {
+                ~{extract chunk reference}
+            }
+            break;
 
-~{scan to beginning of chunk definition}
+        case '\n':
+            exit_fail_if(c == NULL, "Error: chunk termination outside of chunk definition? on line %d\n", line_number);
+            *possible_end = '\0';
+            return s;
 
-list_append(&(c->contents), (void *)s);
+        default:
+            if (type == ATSIGN)
+            {
+                if (c == NULL) return s + 1;
+                *at_the_atsign = '\0';
+                escape = 1;
+            }
+    }
 
-final_newline_candidate = s;
+    chunk_contents * contents = code_contents_new(s);
+    list_append(&(c->contents), (void *)contents);
+    s = s + escape;
+    possible_end = s;
+    ~{scan to the next ATSIGN}
+    return extract_chunk(s, d, tangles, possible_end, start_of_line, c);
+}
+// ~
+```
 
-~{scan to the end of the chunk and terminate the string}
+```c
+// ~='extract chunk reference'
+--s; /* point s at the opening { of the invocation for extract_name */
+{
+    char * name = extract_name(&s);
+    code_chunk * ref = dict_get(d, name);
+    if (ref == NULL) /* chunk hasn't been defined yet */
+    {
+        ref = code_chunk_new(name);
+        dict_add(d, ref);
+    }
+    {
+        ~{copy indent string}
+        list_append(&(c->contents), 
+                (void *)reference_contents_new(indent, size_of_indent, ref));
+    }
+}
+// ~
+```
+
+```c
+// ~='copy indent string'
+char * indent;
+char * start = start_of_line;
+char * end = start_of_line;
+while (isspace(*end)) ++end;
+size_t size_of_indent = end - start;
+indent = malloc(size_of_indent + 1);
+memcpy(indent, start, size_of_indent);
+*(indent + size_of_indent) = '\0';
 // ~
 ```
 
@@ -425,45 +461,29 @@ in the `final_newline_candidate` variable.
 `final_newline_candidate` is initialized to the same position as the beginning
 of the chunk, so that a chunk with no contents is correctly extracted as an
 empty string.  For example, tangling the following chunk definition should
-produce file which is empy except for a single newline character that is added
-to the end of tangle-output chunks to ensure the file ends with a mewline.
+produce a file which is empty except for a single newline character that is
+added to the end of tangle-output chunks to ensure the file ends with a
+mewline.
 
 ```c
 // ~#'test/a_newline.txt'
 // ~
 ```
 
-Scanning for the end of the file therefore consists of simply recording the
+Scanning for the end of the chunk therefore consists of simply recording the
 position of newlines until the terminal ATSIGN is located, plus some error
 handling and cruft related to tracking ATSIGNS that I'm planning on refactoring
 out.
 
 ```c
-// ~='scan to the end of the chunk and terminate the string'
-while(1)
+// ~='scan to the next ATSIGN'
+for( ; *s != ATSIGN; ++s)
 {
     if (*s == '\n')
     {
         ++line_number;
-        final_newline_candidate = s;
+        start_of_line = possible_end = s+1;
     }
-    else if (*s == ATSIGN) 
-    {
-        ~{keep track of changing ATSIGNs}
-        ++s;
-        if (*s == ATSIGN) {} /* escape, skip over the second ATSIGN */
-                             /* so it won't be turned into a CTRL*/
-        else if (*s == '\n' || *s == '\0')
-        {
-            *final_newline_candidate = '\0'; /* yes, it was the final newline */
-                                             /* null terminate the contents */
-            break; /* escape chunk extraction while loop */
-        }
-    }
-    else exit_fail_if ((*s == '\0'),
-                "Error: file ended during definition of chunk '%s'\n",
-                c->name);
-    ++s;
 }
 // ~
 ```
@@ -486,6 +506,7 @@ while (*s++ != '\n') /* scan `s` to one past the end of line */
             c->name);
 }
 ++line_number;
+start_of_line = s;
 // ~
 ```
 
@@ -499,21 +520,26 @@ been used.  Redefining an existing chunk is not allowed.
 ```c
 // ~='create new chunk or retrieve existing chunk for appending'
 {
-    char type = *s++;
-    char terminus = *s++; /* chunk name should be 'wrapped' in "matching" *characters* */
-    char * name = extract_name(s, terminus);
-
+    if (c != NULL) exit_fail_if(1, 
+            "Error: definition of chunk within definition of '%s' on line %d\n", 
+            c->name);
+    char * name = extract_name(&s);
     c = dict_get(d, name);
     if (type == '+' && c != NULL) {} /* appending to an existing chunk */
     else 
     {
-        exit_fail_if(c != NULL,
-                "Error: redefinition of chunk %s on line %d\n", 
-                name, line_number);
-        c = code_chunk_new(name);
-        c->tangle = type == '#';
-        dict_add(d, c);
-        if (c->tangle) list_append(&tangles, (void *)c);
+        if (c != NULL)
+        {
+            exit_fail_if(c->contents != NULL,
+                    "Error: redefinition of chunk %s on line %d\n", 
+                    name, line_number);
+        } 
+        else 
+        {
+            c = code_chunk_new(name);
+            dict_add(d, c);
+        }
+        if (type == '#') list_append(tangles, (void *)c);
     }
 }
 // ~
@@ -538,7 +564,7 @@ for(; tangles != NULL; tangles = tangles->successor)
                 c->name, c->name);
         continue;
     }
-    code_chunk_print(f, d, c, "");
+    code_chunk_print(f, d, c, NULL);
     fclose(f);
 }
 // ~
@@ -546,70 +572,44 @@ for(; tangles != NULL; tangles = tangles->successor)
 
 Outputting tangle chunks is done mainly by `code_chunk_print`, which calls
 itself recursively. This function proceeds character by character. Most
-characters are simply echoed to the output file.  Code invocations and escape
-sequences are handled specially. When a newline is encountered, this also
-causes indentation to be printed. The start of each line is also noted to
-facilitate keeping track of indentation when recursively expanding chunks.
+characters are simply echoed to the output file.  When a newline is
+encountered, this also causes indentation to be printed. 
 
 ```c
 // ~='code chunk print'
-void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent)
+void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent, size_t indent_size, size_t indent_mem)
 {
     list * l;
     for (l = c->contents; l != NULL; l = l->successor)
     {
-        char * s = l->data;
-        char * start_of_line = s;
-        while (*s != '\0')
+        chunk_contents * contents = l->data;
+        if (contents_type(contents) == code)
         {
-            if (*s == CTRL)
-            {
-                ++s;
-                if (*s != '{') fputc(*s, f); /* escaped ATSIGN, print it */
-                else /* this must be a code invocation */
-                {
-                    char * name = extract_name(++s, '}');
-                    code_chunk * next_c = dict_get(d, name);
-
-                    if (next_c == NULL)
-                    {
-                        fprintf(stderr,
-                                "Warning: '%s' could not be found in invocation within `%s`\n",
-                                name, c->name);
-                    }
-                    else 
-                    {
-                        ~{build the next indent}
-                
-                        code_chunk_print(f, d, next_c, next_indent);
-                    }
-                    while(*s != '}') ++s; /* scan s to the '}' */
-                    /* we don't need to exit_fail_if we find the end of file during
-                     * this loop, because extract_name would have already found
-                     * this error */
-                    
-                    /* fall through to the outer ++s so s points after the '}' */
-
-                    /* we should probably free name here */
-                }
-            }
-            else 
+            char * s;
+            for (s = contents->string; *s != '\0'; s++)
             {
                 fputc(*s, f);
-                if (*s == '\n') 
-                {
-                    /* we can assume there is always another line after a '\n'
-                     * because on the final line the '\n' will have been turned
-                     * into a '\0' to terminate the string */
-                    start_of_line = s + 1;
-                    fprintf(f, "%s", indent); /* print indent on the new line */
-                }
+                if (*s == '\n') fprintf(f, indent);
             }
-            ++s;
         }
-        /* if there are more contents to append, separate them with a newline */
-        if (l->successor != NULL) fputc('\n', f); 
+        else if (contents_type(contents) == reference)
+        {
+            code_chunk * next_c = contents->reference;
+
+            size_t newsize = indent_size + contents->indent_size;
+            size_t newmem = newsize + 1;
+            if (newsize > indent_size)
+            {
+                if (newmem > indent_mem) indent = realloc((void *)indent, newsize + 1);
+                memcpy((void *)(indent + indent_size), contents->string, contents->indent_size + 1)
+            }
+
+            indent_mem = code_chunk_print(f, d, next_c, indent, newsize, indent_mem);
+
+            *(indent + indent_size) = '\0'; /* reset indent */
+        }
     }
+    return indent_mem;
 }
 // ~
 ```
@@ -657,6 +657,10 @@ list * list_new(void * d)
     return l;
 }
 
+void list_free(list * l)
+{
+}
+
 /* we need a double pointer so that if we are passed lst == NULL we mutate *lst
  * so that it points to a new list. This happens in dict_add if the new chunk
  * is hashed into a bucket not already containing a pointer to a list */
@@ -673,6 +677,30 @@ void list_append(list ** lst, void * addend)
         while (l->successor != NULL) l = l->successor; /* go to the end of l */
         l->successor = a;
     }
+}
+
+void list_push(list ** lst, void * frame)
+{
+    list * p = list_new(frame);
+    if (*lst == NULL)
+    {
+        *lst = p;
+    }
+    else
+    {
+        list * l = *lst;
+        *lst = p;
+        p->successor = l;
+    }
+}
+
+void list_pop(list ** lst)
+{
+    list * p = *lst)
+    if (p == NULL) return;
+    list * l = p->successor;
+    *lst = l;
+    list_free(p);
 }
 
 ~{code chunk struct}
@@ -736,35 +764,26 @@ void exit_fail_if(int condition, char * message, ...)
     exit(EXIT_FAILURE);
 }
 
-char * extract_name(char * s, char terminus)
+char * extract_name(char ** source)
 {
-    char * destination;
-    char * selection_start = s;
-    char * selection_end;
+    char * s = *source;
+    char terminus = *s++;
+    if (terminus == '{') terminus = '}';
+    char * destination = s;
 
-    while(1)
-    {
-        if (*s == terminus)
-        {
-            selection_end = s;
-            break;
-        }
-        else exit_fail_if ((*s == '\n' || *s == '\0'),
-                    "Error: unterminated name on line %d\n",
-                    line_number);
-        ++s;
-    }
-
-    exit_fail_if ((selection_end == selection_start),
+    for (; *s != terminus; ++s)
+        exit_fail_if ((*s == '\n' || *s == '\0'), 
+                "Error: unterminated name on line %d\n", line_number);
+    exit_fail_if (destination == s,
                 "Error: empty name on line %d\n",
                 line_number);
 
-    *selection_end = '\0';
-    destination = malloc(strlen(selection_start) + 1);
-    strcpy(destination, selection_start);
-    *selection_end = terminus;
+    *s = '\0';
+    *source = s + 1;
     return destination;
 }
+
+~{extract chunk}
 
 ~{code chunk print}
 // ~
