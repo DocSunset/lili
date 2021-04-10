@@ -659,6 +659,7 @@ list * list_new(void * d)
 
 void list_free(list * l)
 {
+
 }
 
 /* we need a double pointer so that if we are passed lst == NULL we mutate *lst
