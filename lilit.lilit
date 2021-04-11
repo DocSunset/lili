@@ -274,7 +274,7 @@ char ATSIGN = 64; /* ascii for at sign */
 // ~
 ```
 
-While scannign and extracting code chunks, anytime a newline character is
+While scanning and extracting code chunks, anytime a newline character is
 encountered the variable `line_number` is incremented.  `line_number` is
 currently only used when printing error messages to help the user find the
 location of the error.
@@ -293,15 +293,22 @@ loop where the chunks are actually extracted.
 // ~='extract code chunks'
 {
     char * s = source;
+    char * start = NULL;
+    char * start_of_line = NULL;
+    code_chunk * c = NULL;
+    int * newline = NULL;
     
     while (*s != '\0') 
     {
-        if (*s == ATSIGN) s = extract_chunk(s, d, &tangles, NULL, NULL, NULL);
-        else
+        if (*s == ATSIGN)
         {
-            if (*s == '\n') ++line_number;
-            ++s;
+            ~{process ATSIGN}
         }
+        else if (*s == '\n') 
+        {
+            ~{process newlines}
+        }
+        else ++s;
     }
 }
 // ~
@@ -323,8 +330,8 @@ typedef struct CodeChunk
 typedef struct ChunkContents
 {
     char * string;
-    size_t indent_size;
     code_chunk * reference;
+    int newline;
 } chunk_contents;
 
 chunk_contents * code_contents_new(char * code)
@@ -332,15 +339,16 @@ chunk_contents * code_contents_new(char * code)
     chunk_contents * c = malloc(sizeof(chunk_contents));
     c->string = code;
     c->reference = NULL;
+    c->newline = 0;
     return c;
 }
 
-chunk_contents * reference_contents_new(char * indent, size_t size, code_chunk * ref)
+chunk_contents * reference_contents_new(char * indent, code_chunk * ref)
 {
     chunk_contents * c = malloc(sizeof(chunk_contents));
     c->string = indent;
-    c->indent_size = size;
     c->reference = ref;
+    c->newline = 0;
     return c;
 }
 
@@ -367,61 +375,97 @@ contents are instead null-terminated in place by editing the source buffer via
 `*s`. 
 
 ```c
-// ~='extract chunk'
-char * extract_chunk(char * s, dict * d, list ** tangles, char * possible_end, char * start_of_line, code_chunk * c)
+// ~='process ATSIGN'
+char * at_the_atsign = s++;
+char type = *s++;
+size_t escape = 0;
+switch (type)
 {
-    char * at_the_atsign = s++;
-    char type = *s++;
-    size_t escape = 0;
-    switch (type)
+    case '=': case '#': case '+':
+        ~{create new chunk or retrieve existing chunk for appending}
+        ~{scan to beginning of chunk definition}
+        start_of_line = s;
+        break;
+
+    case ':':
+        exit_fail_if (( *s == '=' || *s == '#' || *s == '+' || *s == '{' 
+                     || *s == ':' || *s == '\n'), 
+                "Error: cannot redefine ATSIGN to a character used in control sequences on line %d\n", line_number);
+        ATSIGN = *s++;
+        if (c == NULL) /* outside chunk definition */ continue;
+        *at_the_atsign = '\0'; /* terminate previous contents record */
+        break;
+
+    case '{':
+        ~{pop off preceeding contents on this line}
+        ~{extract chunk reference}
+        break;
+
+    case '\n':
+        exit_fail_if (c == NULL, "Error: chunk terminator outside chunk definition on line %d\n", line_number);
+        *start = '\0'; /* terminate previous contents record (it should be empty) */
+        c = NULL; /* done operating on this chunk */
+        start = NULL;
+        continue;
+
+    default:
+        if (type == ATSIGN)
+        {
+            if (c == NULL) continue;
+            *at_the_atsign = '\0';
+            escape = 1;
+        }
+}
+
+if (*s != ATSIGN)
+{
+    start = s - escape;
+    chunk_contents * contents = code_contents_new(start);
+    newline = &(contents->newline);
+    list_push_back(&(c->contents), (void *)contents);
+}
+// ~
+```
+
+```c
+// ~='process newlines'
+char * at_the_newline = s++;
+++line_number;
+if (c != NULL)
+{
+    *at_the_newline = '\0';
+    *newline = 1;
+    start_of_line = start = s;
+    if (*start != ATSIGN)
     {
-        case '=': case '#': case '+':
-            ~{create new chunk or retrieve existing chunk for appending}
-            ~{scan to beginning of chunk definition}
-            break;
-
-        case ':':
-            exit_fail_if (( *s == '=' || *s == '#' || *s == '+' || *s == '{' 
-                         || *s == ':' || *s == '\n'), 
-                    "Error: cannot redefine ATSIGN to a character used in control sequences on line %d\n", line_number);
-            ATSIGN = *s++;
-            /* fall through */
-        case '{':
-            if (c == NULL) /* outside chunk definition */ return s;
-            *at_the_atsign = '\0'; /* terminate previous contents list entry */
-            if (type == '{')
-            {
-                ~{extract chunk reference}
-            }
-            break;
-
-        case '\n':
-            exit_fail_if(c == NULL, "Error: chunk termination outside of chunk definition? on line %d\n", line_number);
-            *possible_end = '\0';
-            return s;
-
-        default:
-            if (type == ATSIGN)
-            {
-                if (c == NULL) return s + 1;
-                *at_the_atsign = '\0';
-                escape = 1;
-            }
+        chunk_contents * contents = code_contents_new(start);
+        list_push_back(&(c->contents), (void *)contents);
+        newline = &(contents->newline);
     }
+}
+// ~
+```
 
-    chunk_contents * contents = code_contents_new(s);
-    list_append(&(c->contents), (void *)contents);
-    s = s + escape;
-    possible_end = s;
-    ~{scan to the next ATSIGN}
-    return extract_chunk(s, d, tangles, possible_end, start_of_line, c);
+```c
+// ~='pop off preceeding contents on this line'
+while(1)
+{
+    list * l = list_pop_back(&(c->contents));
+    chunk_contents * contents = l->data;
+    free((void *)l);
+    if (contents->newline) /* contents terminates the line before */
+    {
+        list_push_back(&(c->contents), contents); /* put it back on the list */
+        break;
+    }
+    /* else contents is removed from the list */
 }
 // ~
 ```
 
 ```c
 // ~='extract chunk reference'
---s; /* point s at the opening { of the invocation for extract_name */
+--s; /* point s at the opening { of the invocation; for extract_name */
 {
     char * name = extract_name(&s);
     code_chunk * ref = dict_get(d, name);
@@ -431,24 +475,40 @@ char * extract_chunk(char * s, dict * d, list ** tangles, char * possible_end, c
         dict_add(d, ref);
     }
     {
+        char * indent;
         ~{copy indent string}
-        list_append(&(c->contents), 
-                (void *)reference_contents_new(indent, size_of_indent, ref));
+        list_push_back(&(c->contents), 
+                (void *)reference_contents_new(indent, ref));
     }
+
+    /* ignore the rest of the line */
+    while (*s++ != '\n') 
+        exit_fail_if(*s == '\0', 
+                "Error: file ended during definition of '%s' after invocation of '%s' on line %d\n", 
+                c->name, name, line_number);
+    ++line_number;
+    ++s; /* exclude this newline from being included in the contents list */
+    start_of_line = s;
 }
 // ~
 ```
 
 ```c
 // ~='copy indent string'
-char * indent;
-char * start = start_of_line;
-char * end = start_of_line;
-while (isspace(*end)) ++end;
-size_t size_of_indent = end - start;
-indent = malloc(size_of_indent + 1);
-memcpy(indent, start, size_of_indent);
-*(indent + size_of_indent) = '\0';
+{
+    char * start = start_of_line;
+    char * end = start_of_line;
+    while (isspace(*end)) ++end;
+    size_t size_of_indent = end - start;
+    indent = malloc(size_of_indent + 1);
+    memcpy(indent, start, size_of_indent);
+    *(indent + size_of_indent) = '\0';
+}
+// ~
+```
+
+```c
+// ~='add line to code chunk'
 // ~
 ```
 
@@ -470,35 +530,13 @@ mewline.
 // ~
 ```
 
-Scanning for the end of the chunk therefore consists of simply recording the
-position of newlines until the terminal ATSIGN is located, plus some error
-handling and cruft related to tracking ATSIGNS that I'm planning on refactoring
-out.
-
-```c
-// ~='scan to the next ATSIGN'
-for( ; *s != ATSIGN; ++s)
-{
-    if (*s == '\n')
-    {
-        ++line_number;
-        start_of_line = possible_end = s+1;
-    }
-}
-// ~
-```
-
-Scanning to the beginning of the chunk is even simpler, and basically just has
+Scanning to the beginning of the chunk is simple, and one basically just has
 to be aware of the possibility that the file is malformed and not to loop
 forever if the file ends before the chunk definition begins.
 
-I guess if the user was a monster this could encounter difficulty were they to
-use a newline as the name delimeter. This could be resolved by moving `s` up to
-the name terminator before this loop.
-
 ```c
 // ~='scan to beginning of chunk definition'
-/* s points to the character after ATSIGN/CTRL on entry */
+/* s points to the character after the name terminator on entry */
 while (*s++ != '\n') /* scan `s` to one past the end of line */
 {
     exit_fail_if(*s == '\0', 
@@ -539,7 +577,7 @@ been used.  Redefining an existing chunk is not allowed.
             c = code_chunk_new(name);
             dict_add(d, c);
         }
-        if (type == '#') list_append(tangles, (void *)c);
+        if (type == '#') list_push(&tangles, (void *)c);
     }
 }
 // ~
@@ -564,7 +602,7 @@ for(; tangles != NULL; tangles = tangles->successor)
                 c->name, c->name);
         continue;
     }
-    code_chunk_print(f, d, c, NULL);
+    code_chunk_print(stdout, d, c, NULL);
     fclose(f);
 }
 // ~
@@ -577,7 +615,7 @@ encountered, this also causes indentation to be printed.
 
 ```c
 // ~='code chunk print'
-void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent, size_t indent_size, size_t indent_mem)
+void code_chunk_print(FILE * f, dict * d, code_chunk * c, list * indents)
 {
     list * l;
     for (l = c->contents; l != NULL; l = l->successor)
@@ -585,31 +623,26 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent, size_t 
         chunk_contents * contents = l->data;
         if (contents_type(contents) == code)
         {
-            char * s;
-            for (s = contents->string; *s != '\0'; s++)
+            if (*contents->string != '\0')
             {
-                fputc(*s, f);
-                if (*s == '\n') fprintf(f, indent);
+                /* print indents on non-empty lines after the first */
+                list * i;
+                for (i = indents; i != NULL; i = i->successor)
+                {
+                    fputs((char *)i->data, f);
+                }
             }
+            fputs(contents->string, f); 
+            if (contents->newline) fputc('\n', f);
         }
         else if (contents_type(contents) == reference)
         {
             code_chunk * next_c = contents->reference;
-
-            size_t newsize = indent_size + contents->indent_size;
-            size_t newmem = newsize + 1;
-            if (newsize > indent_size)
-            {
-                if (newmem > indent_mem) indent = realloc((void *)indent, newsize + 1);
-                memcpy((void *)(indent + indent_size), contents->string, contents->indent_size + 1)
-            }
-
-            indent_mem = code_chunk_print(f, d, next_c, indent, newsize, indent_mem);
-
-            *(indent + indent_size) = '\0'; /* reset indent */
+            list_push(&indents, (void *)contents->string);
+            code_chunk_print(f, d, next_c, indents);
+            list_pop(&indents);
         }
     }
-    return indent_mem;
 }
 // ~
 ```
@@ -657,17 +690,12 @@ list * list_new(void * d)
     return l;
 }
 
-void list_free(list * l)
-{
-
-}
-
 /* we need a double pointer so that if we are passed lst == NULL we mutate *lst
  * so that it points to a new list. This happens in dict_add if the new chunk
  * is hashed into a bucket not already containing a pointer to a list */
-void list_append(list ** lst, void * addend)
+void list_push_back(list ** lst, void * elem)
 {
-    list * a = list_new(addend);
+    list * a = list_new(elem);
     if (*lst == NULL)
     {
         *lst = a;
@@ -680,9 +708,27 @@ void list_append(list ** lst, void * addend)
     }
 }
 
-void list_push(list ** lst, void * frame)
+list * list_pop_back(list ** lst)
 {
-    list * p = list_new(frame);
+    if (*lst == NULL) return NULL;
+    if ((*lst)->successor == NULL)
+    {
+        free((void *)(*lst));
+        *lst = NULL;
+        return NULL;
+    }
+    {
+        list * l = (*lst)->successor;
+        while (l->successor != NULL) l = l->successor;
+        free((void *)l->successor);
+        l->successor = NULL;
+        return l;
+    }
+}
+
+void list_push(list ** lst, void * elem)
+{
+    list * p = list_new(elem);
     if (*lst == NULL)
     {
         *lst = p;
@@ -697,11 +743,11 @@ void list_push(list ** lst, void * frame)
 
 void list_pop(list ** lst)
 {
-    list * p = *lst)
+    list * p = *lst;
     if (p == NULL) return;
     list * l = p->successor;
     *lst = l;
-    list_free(p);
+    free((void *)p);
 }
 
 ~{code chunk struct}
@@ -735,7 +781,7 @@ dict * dict_new(size_t size)
 void dict_add(dict * d, code_chunk * c)
 {
     unsigned long h = hash((unsigned char *)c->name) % d->size;
-    list_append(&(d->array[h]), (void *) c);
+    list_push_back(&(d->array[h]), (void *) c);
 }
 
 code_chunk * dict_get(dict * d, char * name)
@@ -783,8 +829,6 @@ char * extract_name(char ** source)
     *source = s + 1;
     return destination;
 }
-
-~{extract chunk}
 
 ~{code chunk print}
 // ~
