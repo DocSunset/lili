@@ -1,3 +1,4 @@
+<!--- @:~ --->
 # lilit: the little literate programming tool
 
 `lilit` is a simple command line program written in portable dependency-free C
@@ -5,9 +6,27 @@ that aims to provide the absolute bare minimum of functionality needed to
 enable writing programs in a literate programming style.  All `lilit` does is
 scan a plain-text file for a handful of control sequences, extract source code
 delimited by those control sequences, and output source code files by
-recursively expanding the chunks of code thus found.  This minimalist approach
-ensures users of `lilit` can depend on it to continue working reliably and
-easily modify the source code to tailor the program to their specific needs.  
+recursively expanding the chunks of code thus found. This is clear from the
+high level structure of `lilit`'s source code:
+
+```c
+// ~#'lilit.c'
+~{definitions}
+
+int main(int argc, char ** argv)
+{
+    ~{setup}
+    ~{extract code chunks}
+    ~{output tangle chunks recursively}
+    return 0;
+}
+// end lilit.c ~
+```
+
+This minimalist approach ensures users of `lilit` can depend on it to continue
+working reliably and easily modify the source code to tailor the program to
+their specific needs, such as adding support for a particular typesetting
+markup.
 
 # what is literate programming?
 
@@ -172,7 +191,7 @@ article](http://akkartik.name/post/literate-programming) for example).  If the
 writer wishes to produce a typeset document from the source code, typesetting
 markup may be written directly in the lilit-formatted document and the
 typesetting system can be run directly on this document. For example, this
-literate source document for lilit is typeset in Github-flavored Markdown.
+literate source document for `lilit` is typeset in Github-flavored Markdown.
 
 Despite its intentional limitations, `lilit` provides enough functionality to
 enable writing in a literate programming style.  Code chunks can be presented
@@ -180,14 +199,13 @@ to the reader in any order, and code chunks can be referred to by name inside
 of other code chunks, allowing for high levels of abstraction in the
 presentation of the program.  When outputting source code, chunks are
 recursively expanded into the output source files while retaining indentation
-for compatibility with any programming language.
+for compatibility with white space sensitive languages such as python.
 
 The help text explains the control sequences `lilit` searches for to extract
 the machine code embedded in your natural-language document:
 
 ```c
-@:~
-~='help text'
+// ~='help text'
 const char * help =
 "lilit: the little literate programming tool -- version %s\n\
 \n\
@@ -202,7 +220,7 @@ control sequence.\n\
 \n\
 ATSIGN:new control character  Redefines ATSIGN to whatever immediately follows\n\
                               the : sign. This is useful if your machine source\n\
-                              has lots of @ signs, for example.\n\
+                              language uses lots of @ signs, for example.\n\
 \n\
 ATSIGN='chunk name'           Begin a regular chunk declaration. The chunk name\n\
                               must be surrounded by matching single (') or\n\
@@ -232,55 +250,47 @@ ATSIGN                        Any ATSIGN that isn't followed by one of the above
                               special characters is interpreted as the end of a\n\
                               chunk declaration.\n\
 ";
-~
+// end help text ~
 ```
 
 ## Program Overview
 
-```c
-~#'lilit.c'
-~{definitions}
-
-int main(int argc, char ** argv)
-{
-    ~{setup}
-    ~{extract code chunks}
-    ~{output tangle chunks recursively}
-    return 0;
-}
-~
-```
-
-The setup subroutine mainly loads the file to process into memory.
+As described in the introduction, `lilit` is implemented with three main
+processing stages: setup, extraction, and output. The setup phase reads the
+file to be processed into memory. During extraction, the file is scanned for
+code chunk definitions, and these are logged in data structures convenient for
+output. The output phase then recursively expands code chunks into files.
 
 ## Code Chunk Extraction
 
 Extraction proceeds mostly character by character, breaking out into inner
-subroutines when an ATSIGN is encountered. 
+subroutines when an ATSIGN is encountered. ATSIGN is initialized to 64, the
+decimal representation of the ASCII character `@` for which the variable is
+named.
 
-```~
-~+'globals'
+```c
+// ~+'globals'
 char ATSIGN = 64; /* ascii for at sign */
-~
+// ~
 ```
 
-Essentially, the outer loop ignores your literate prose while scanning for
-control sequences. When one is found, control passes to the inner loop where
-the chunks are actually extracted.
-
-While scanning and extracting code chunks, anytime a newline character is
-encountered the global variable `line_number` is incremented.  `line_number` is
+While scannign and extracting code chunks, anytime a newline character is
+encountered the variable `line_number` is incremented.  `line_number` is
 currently only used when printing error messages to help the user find the
 location of the error.
 
 ```c
-~+'globals'
+// ~+'globals'
 int line_number = 0;
-~
+// ~
 ```
 
+The outer-most loop of the extraction phase ignores your literate prose while
+scanning for control sequences. When one is found, control passes to the inner
+loop where the chunks are actually extracted.
+
 ```c
-~='extract code chunks'
+// ~='extract code chunks'
 {
     char * s = source;
     
@@ -301,29 +311,20 @@ int line_number = 0;
             }
             else if (*s == ':')
             {
-                ~{change ATSIGN}
+                ++s;
+                exit_fail_if (( *s == ':' || *s == '=' || *s == '#' || *s == '\n' || *s == '{'  || *s == '+'),
+                            "Error: cannot redefine ATSIGN to a character used in control sequences on line %d\n",
+                            line_number);
+                ATSIGN = *s;
             }
         }
         ++s;
     }
 }
-~
+// ~
 ```
 
-Changing the `ATSIGN` character when encountering `ATSIGN:` is straightforward
-to understand, so here it is in full.
-
-```c
-~='change ATSIGN'
-++s;
-exit_fail_if (( *s == ':' || *s == '=' || *s == '#' || *s == '\n' || *s == '{'  || *s == '+'),
-            "Error: cannot redefine ATSIGN to a character used in control sequences on line %d\n",
-            line_number);
-ATSIGN = *s;
-~
-```
-
-After this point, the scanner will search for the new ATSIGN character, which
+After changing ATSIGN, the scanner will search for the new ATSIGN character, which
 presumably is no longer an `@` but some other character.
 
 Although changing ATSIGN is simple, allowing this change introduces some
@@ -345,15 +346,15 @@ pass for output, the program scans for CTRL instead of ATSIGN. CTRL is chosen
 to be a character unlikely to appear in any source code.
 
 ```c
-~+'globals'
+// ~+'globals'
 const char CTRL = 7; /* ascii ^G, aka BEL */
-~
+// ~
 ```
 
 ```c
-~='keep track of changing ATSIGNs'
+// ~='keep track of changing ATSIGNs'
 *s = CTRL; /* set ATSIGN to CTRL s */
-~
+// ~
 ```
 
 The inner chunk extraction subroutine works similarly to the outer one, but
@@ -363,7 +364,7 @@ access when outputting tangles.
 For reference, here is the chunk data structure:
 
 ```c
-~='code chunk struct'
+// ~='code chunk struct'
 typedef struct CodeChunk
 {
     char * name;
@@ -380,7 +381,7 @@ code_chunk * code_chunk_new(char * name)
     chunk->tangle   = 0;
     return chunk;
 }
-~
+// ~
 ```
 
 Extracting the chunk means adding a pointer to a null terminated string to the
@@ -406,7 +407,7 @@ global list `tangles`.  (Actually neither `d` nor `tangles` are strictly
 global, but rather are declared in the `main` function.)
 
 ```c
-~='extract chunk'
+// ~='extract chunk'
 /* s points to the character after ATSIGN/CTRL on entry */
 char * final_newline_candidate;
 int tangle = *s == '#'; /* 'ATSIGN#' means tangle */
@@ -470,7 +471,7 @@ while(1)
                 c->name);
     ++s;
 }
-~
+// ~
 ```
 
 ## Code Tangling and Output
@@ -479,7 +480,7 @@ Each code chunk recorded in the list of chunks to tangle is output to a file
 named the same as the code chunk:
 
 ```c
-~='output tangle chunks recursively'
+// ~='output tangle chunks recursively'
 for(; tangles != NULL; tangles = tangles->successor)
 {
     FILE * f;
@@ -495,7 +496,7 @@ for(; tangles != NULL; tangles = tangles->successor)
     code_chunk_print(f, d, c, "");
     fclose(f);
 }
-~
+// ~
 ```
 
 Outputting tangle chunks is done mainly by `code_chunk_print`, which calls
@@ -506,7 +507,7 @@ causes indentation to be printed. The start of each line is also noted to
 facilitate keeping track of indentation when recursively expanding chunks.
 
 ```c
-~='code chunk print'
+// ~='code chunk print'
 void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent)
 {
     list * l;
@@ -565,7 +566,7 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, char * indent)
         if (l->successor != NULL) fputc('\n', f); 
     }
 }
-~
+// ~
 ```
 
 We keep track of indentation so that when a chunk is invoked with leading
@@ -575,7 +576,7 @@ and is nice even when white space isn't syntactic just to preserve the
 visual structure of the code in the output.
 
 ```c
-~='build the next indent'
+// ~='build the next indent'
 char * next_indent;
 char tmp;
 char * indent_end = start_of_line; 
@@ -586,7 +587,7 @@ next_indent = malloc(strlen(start_of_line) + strlen(indent) + 1);
 strcpy(next_indent, indent); /* copy current indent to next_indent */
 strcat(next_indent, start_of_line); /* append space from current line to next_indent */
 *indent_end = tmp; /* restore first non-space char */
-~
+// ~
 ```
 
 ## Extra Details
@@ -595,7 +596,7 @@ Read on if you are interested in further details, such as the definition of the
 list and dict datatypes, the helper functions, and other minutiae.
 
 ```c
-~='data types'
+// ~='data types'
 typedef struct List
 {
     void * data;
@@ -679,7 +680,7 @@ code_chunk * dict_get(dict * d, char * name)
 ```
 
 ```c
-~='functions'
+// ~='functions'
 void exit_fail_if(int condition, char * message, ...)
 {
     if (!condition) return;
@@ -721,11 +722,11 @@ char * extract_name(char * s, char terminus)
 }
 
 ~{code chunk print}
-~
+// ~
 ```
 
 ```c
-~='definitions'
+// ~='definitions'
 ~{includes}
 
 ~{globals}
@@ -735,11 +736,11 @@ char * extract_name(char * s, char terminus)
 ~{functions}
 
 ~{help text}
-~
+// ~
 ```
 
 ```c
-~='setup'
+// ~='setup'
 ~{variables}
 
 ~{parse command line arguments}
@@ -747,29 +748,29 @@ char * extract_name(char * s, char terminus)
 ~{load file into `char * source`}
 
 ~{allocate additional memory}
-~
+// ~
 ```
 
 ```c
-~='includes'
+// ~='includes'
 #include <ctype.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stddef.h>
 #include <stdarg.h>
-~
+// ~
 ```
 
 ```c
-~='parse command line arguments'
+// ~='parse command line arguments'
 if (argc < 2 || *argv[1] == '-' /* assume -h */) 
 {
     fprintf(stderr, help, VERSION, argv[0]);
     exit(EXIT_SUCCESS);
 }
 char * filename = argv[1];
-~
+// ~
 ```
 
 Since the control sequence leader character can be changed with 'ATSIGN:',
@@ -783,16 +784,16 @@ solution would be to detect actual ascii 7 while extracting and embed some
 kind of escape sequence.
 
 ```c
-~='variables'
+// ~='variables'
 int file_size;
 char * source;
 dict * d;
 list * tangles = NULL;
-~
+// ~
 ```
 
 ```c
-~='load file into `char * source`'
+// ~='load file into `char * source`'
 {
     FILE * source_file = fopen(filename, "r");
     exit_fail_if ((source_file == NULL), 
@@ -811,11 +812,11 @@ list * tangles = NULL;
     
     source[file_size] = 0;
 }
-~
+// ~
 ```
 
 ```c
-~='allocate additional memory'
+// ~='allocate additional memory'
 d = dict_new(128); /* for storing chunks */
-~
+// ~
 ```

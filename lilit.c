@@ -224,7 +224,7 @@ set to '@' by default.\n\
 \n\
 ATSIGN:new control character  Redefines ATSIGN to whatever immediately follows\n\
                               the : sign. This is useful if your machine source\n\
-                              has lots of @ signs, for example.\n\
+                              language uses lots of @ signs, for example.\n\
 \n\
 ATSIGN='chunk name'           Begin a regular chunk declaration. The chunk name\n\
                               must be surrounded by matching delimiter\n\
