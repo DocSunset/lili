@@ -137,16 +137,24 @@ Cons:
 - Prose introduces additional maintenance overhead, especially when requirements change quickly
 - Writing good programs is hard enough without also having to write good literature
 
-Literate programming may be less useful for beginners, hobbyists, and other
-amateurs, who may benefit less from its advantages, and in environments where
-program requirements are not well defined. In these contexts, a pseudo-literate
-programming style relying on comments, revision commits, and documentation may
-be sufficient.  However, if program requirements are reasonably well defined,
-if it is common for newcomers to contribute to a project, if code maintainers
-are likely to change over time, if the people involved in a project are
-reasonably good writers as well as programmers, and especially if the full and
-varied meanings of the source code are as important as the code itself, it may
-be worthwhile to consider adopting a literate programming style.
+If program requirements are reasonably well defined, if it is common for
+newcomers to contribute to a project, if code maintainers are likely to change
+over time, if the people involved in a project are reasonably good writers as
+well as programmers, and especially if the full and varied meanings of the
+source code are as important as the code itself, it may be worthwhile to
+consider adopting a literate programming style.
+
+Writing in a literate programming style may seem less useful for beginners,
+hobbyists, and other amateurs, who may not have the well define program
+requirements and deep understanding of the programs they are writing, and who
+generally work alone and so miss out on the collaborative advantages of
+literate programming.  However, the same people are very likely to benefit from
+more widespread adoption of literate programming, because reading and
+understanding a literate program is much easier than doing the same with
+programs written in a more conventional style. This is the advantage of
+literate programming most exciting to me personally. Literate programs have
+great potential as educational tools. In the best case, literate programs can
+elevate and empower the reader in a way conventional programs simply can't.
 
 # how does `lilit` work?
 
