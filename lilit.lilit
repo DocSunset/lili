@@ -196,15 +196,17 @@ const char * help =
     lilit extracts machine source code from literate source code.\n\
 \n\
 All control sequences begin with a special character called ATSIGN, which is \n\
-set to '@' by default.\n\
+set to '@' by default. Except for escaped ATSIGNs, all control sequences consume\n\
+(i.e. cause to be ignored) the remainder of the line following the end of the\n\
+control sequence.\n\
 \n\
 ATSIGN:new control character  Redefines ATSIGN to whatever immediately follows\n\
                               the : sign. This is useful if your machine source\n\
                               has lots of @ signs, for example.\n\
 \n\
 ATSIGN='chunk name'           Begin a regular chunk declaration. The chunk name\n\
-                              must be surrounded by matching delimiter\n\
-                              characters, which can be anything. The chunk\n\
+                              must be surrounded by matching single (') or\n\
+                              double (") quotes (no backticks). The chunk\n\
                               definition itself begins on the next line.\n\
 \n\
 ATSIGN#'chunk name'           Begin a tangle chunk declaration. This is similar\n\
@@ -219,26 +221,21 @@ ATSIGN+'chunk name'           Append to a chunk. The code starting on the\n\
                               then one will be created. This is useful e.g. for\n\
                               adding #include directives to the top of a c file.\n\
 \n\
-ATSIGN                        End a chunk declaration. The ATSIGN must be \n\
-                              immediately followed by a newline character or the\n\
-                              end of the file without intervening white space.\n\
-                              The whole line on which the terminating ATSIGN is\n\
-                              found is ignored, i.e. not considered part of the\n\
-                              chunk definition.\n\
-\n\
 ATSIGN{chunk invocation}      Invoke a chunk to be recursively expanded into any\n\
                               tangled output files.\n\
 \n\
 ATSIGNATSIGN                  Escape sequence. A literal ATSIGN sign with no\n\
                               special meaning to lilit that will be copied as an\n\
                               ATSIGN to any output tangled documents.\n\
+\n\
+ATSIGN                        Any ATSIGN that isn't followed by one of the above\n\
+                              special characters is interpreted as the end of a\n\
+                              chunk declaration.\n\
 ";
 ~
 ```
 
 ## Program Overview
-
-The program takes two passes over the data: extraction and output.
 
 ```c
 ~#'lilit.c'
@@ -271,7 +268,7 @@ Essentially, the outer loop ignores your literate prose while scanning for
 control sequences. When one is found, control passes to the inner loop where
 the chunks are actually extracted.
 
-While scannign and extracting code chunks, anytime a newline character is
+While scanning and extracting code chunks, anytime a newline character is
 encountered the global variable `line_number` is incremented.  `line_number` is
 currently only used when printing error messages to help the user find the
 location of the error.
