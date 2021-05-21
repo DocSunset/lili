@@ -69,9 +69,18 @@ test_agrees_with_installed: lilit
 	@cmp lilit.c lilit.new
 	@echo success
 
-test: test_makes_file test_same_result test_agrees_with_installed
+test_indents: lilit
+	@echo test ./lilit produces correct indents
+	@./lilit test/indents.lilit
+	@cmp indents.out indents.expect
+	@echo success
+
+test: test_makes_file test_same_result test_agrees_with_installed test_indents
 	@echo ran all tests
 	@mv lilit.bak lilit.c
-	@rm lilit.new lilit.c1
+	@[ -f lilit.new ] && rm lilit.new
+	@[ -f lilit.c1 ] && rm lilit.c1
+	@[ -f indents.out ] && rm indents.out
+	@[ -f indents.expect ] && rm indents.expect
 
 .PHONY: all options clean dist install uninstall test test_makes_file test_same_result test_agrees_with_installed

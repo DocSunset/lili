@@ -1,0 +1,70 @@
+@='a'
+zero
+zero
+    one
+        two
+@/ @
+
+@='b'
+one
+one
+    two
+        three
+    @{c}
+@/ @
+
+@='c'
+two
+two
+    three
+        four
+@/ @
+
+@='d'
+@{a}
+
+    @{b}
+
+        @{c}
+@/ @
+
+@#'indents.out'
+@{a}
+    @{b}
+---
+    @{d}
+@/ @
+
+@#'indents.expect'
+zero
+zero
+    one
+        two
+    one
+    one
+        two
+            three
+        two
+        two
+            three
+                four
+---
+    zero
+    zero
+        one
+            two
+
+        one
+        one
+            two
+                three
+            two
+            two
+                three
+                    four
+
+            two
+            two
+                three
+                    four
+@/ @
