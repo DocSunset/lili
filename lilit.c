@@ -41,21 +41,27 @@ void list_push_back(list ** lst, void * elem)
     }
 }
 
-list * list_pop_back(list ** lst)
+void list_pop_back(list ** lst)
 {
-    if (*lst == NULL) return NULL;
+    if (*lst == NULL) return;
     if ((*lst)->successor == NULL)
     {
         free((void *)(*lst));
         *lst = NULL;
-        return NULL;
+        return;
     }
+    else
     {
-        list * l = (*lst)->successor;
-        while (l->successor != NULL) l = l->successor;
-        free((void *)l->successor);
-        l->successor = NULL;
-        return l;
+        list * l1 = *lst;
+        list * l2 = (*lst)->successor;
+        while (l2->successor != NULL) 
+        {
+            l1 = l2;
+            l2 = l2->successor;
+        }
+        free((void *)l2);
+        l1->successor = NULL;
+        return;
     }
 }
 
@@ -82,21 +88,24 @@ void list_pop(list ** lst)
     *lst = l;
     free((void *)p);
 }
-
-typedef enum ContentType {code, reference} content_t;
-
 typedef struct CodeChunk
 {
     char * name;
     list * contents;
 } code_chunk;
-
 typedef struct ChunkContents
 {
     char * string;
     code_chunk * reference;
     int partial_line;
 } chunk_contents;
+typedef enum ContentType {code, reference} content_t;
+
+content_t contents_type(chunk_contents * c)
+{
+    if (c->reference != NULL) return reference;
+    else return code;
+}
 
 chunk_contents * code_contents_new(char * code)
 {
@@ -114,12 +123,6 @@ chunk_contents * reference_contents_new(char * indent, code_chunk * ref)
     c->reference = ref;
     c->partial_line = 0;
     return c;
-}
-
-content_t contents_type(chunk_contents * c)
-{
-    if (c->reference != NULL) return reference; 
-    else return code;
 }
 
 code_chunk * code_chunk_new(char * name)
@@ -184,7 +187,6 @@ void exit_fail_if(int condition, char * message, ...)
     va_end(args);
     exit(EXIT_FAILURE);
 }
-
 char * extract_name(char ** source)
 {
     char * s = *source;
@@ -203,7 +205,6 @@ char * extract_name(char ** source)
     *source = s + 1;
     return destination;
 }
-
 int advance_to_next_line(char ** source)
 {
     char * s = *source;
@@ -212,7 +213,6 @@ int advance_to_next_line(char ** source)
     ++line_number;
     return 1;
 }
-
 void code_chunk_print(FILE * f, dict * d, code_chunk * c, list * indents)
 {
     list * l;
@@ -221,7 +221,7 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, list * indents)
         chunk_contents * contents = l->data;
         if (contents_type(contents) == code)
         {
-            if (*contents->string != '\0')
+            if (*contents->string != '\0') /* (1) */
             {
                 /* print indents on non-empty lines */
                 list * i;
@@ -229,16 +229,26 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, list * indents)
                 {
                     fputs((char *)i->data, f);
                 }
+                fputs(contents->string, f); 
             }
-            fputs(contents->string, f); 
-            if (contents->partial_line == 0) fputc('\n', f);
+
+
+            if (contents->partial_line) /* (2) */
+            {
+                l = l->successor;
+                exit_fail_if(l == NULL, "Error: partial line without successor in chunk '%s':\n    %s", c->name, contents->string);
+                contents = l->data;
+                fputs(contents->string, f);
+            }
+
+            fputc('\n', f); /* (3) */
         }
         else if (contents_type(contents) == reference)
         {
             code_chunk * next_c = contents->reference;
-            list_push(&indents, (void *)contents->string);
+            list_push_back(&indents, (void *)contents->string);
             code_chunk_print(f, d, next_c, indents);
-            list_pop(&indents);
+            list_pop_back(&indents);
         }
     }
 }
@@ -257,14 +267,19 @@ control sequence.\n\
 \n\
 ATSIGN:new control character  Redefines ATSIGN to whatever immediately follows\n\
                               the : sign. This is useful if your machine source\n\
-                              language uses lots of @ signs, for example.\n\
+                              language uses lots of @ signs, for example. This\n\
+                              control sequence is ignored if it occurs inside\n\
+                              a code chunk definition.\n\
 \n\
-ATSIGN='chunk name'           Begin a regular chunk declaration. The chunk name\n\
+ATSIGN='chunk name'           Begin a regular chunk definition. The chunk name\n\
                               must be surrounded by matching single (') or\n\
                               double (\") quotes (no backticks). The chunk\n\
                               definition itself begins on the next line.\n\
+                              Anything preceeding the ATSIGN and following the\n\
+                              final quote sign is ignored, allowing this control\n\
+                              sequence to be wrapped in typesetting markup.\n\
 \n\
-ATSIGN#'chunk name'           Begin a tangle chunk declaration. This is similar\n\
+ATSIGN#'chunk name'           Begin a tangle chunk definition. This is similar\n\
                               to a regular chunk, except the name of the chunk\n\
                               is also interpreted as a file name, and the chunk\n\
                               is recursively expanded into the file with that\n\
@@ -272,28 +287,45 @@ ATSIGN#'chunk name'           Begin a tangle chunk declaration. This is similar\
 \n\
 ATSIGN+'chunk name'           Append to a chunk. The code starting on the\n\
                               next line will be added at the end of the chunk\n\
-                              named by 'chunk name'. If no such chunk exists,\n\
-                              then one will be created. This is useful e.g. for\n\
+                              named by 'chunk name'. This is useful e.g. for\n\
                               adding #include directives to the top of a c file.\n\
+                              If no such chunk already exists, then this control\n\
+                              sequence is equivalent to a normal chunk\n\
+                              definition (ATSIGN='name').\n\
 \n\
 ATSIGN{chunk invocation}      Invoke a chunk to be recursively expanded into any\n\
-                              tangled output files.\n\
+                              tangled output files. Anything preceeding the\n\
+                              ATSIGN is considered as indentation, and every\n\
+                              line of code in the recursively expanded chunk\n\
+                              will have this indent prepended to it. Anything\n\
+                              following the closing brace is ignored, however it\n\
+                              is recommended not to put anything there for\n\
+                              compatibility with possible future extensions that\n\
+                              may make use of this space (i.e. text following\n\
+                              the closing brace is reserved).\n\
 \n\
-ATSIGNATSIGN                  Escape sequence. A literal ATSIGN sign with no\n\
-                              special meaning to lilit that will be copied as an\n\
-                              ATSIGN to any output tangled documents.\n\
+ATSIGNATSIGN                  Escape sequence. The rest of the line following\n\
+                              the initial ATSIGN (including the second ATSIGN)\n\
+                              is treated as normal code to copy to output\n\
+                              tangled documents. This allows ATSIGN and special\n\
+                              control sequences to be passed through to the\n\
+                              output documents.\n\
 \n\
 ATSIGN/                       End an ongoing chunk declaration.\n\
+\n\
+ATSIGN[anything else]         An ATSIGN followed by any other character is\n\
+                              ignored. However, it is recommended to avoid such\n\
+                              character sequences for compatibility with future\n\
+                              extensions.\n\
 \n";
 
 int main(int argc, char ** argv)
 {
-    int file_size;
     char * source;
     dict * d;
     list * tangles = NULL;
 
-    if (argc < 2 || *argv[1] == '-' /* assume -h */) 
+    if (argc < 2 || argc > 2 || *argv[1] == '-' /* assume -h */) 
     {
         fprintf(stderr, help, VERSION, argv[0]);
         exit(EXIT_SUCCESS);
@@ -301,6 +333,7 @@ int main(int argc, char ** argv)
     char * filename = argv[1];
 
     {
+        int file_size;
         FILE * source_file = fopen(filename, "r");
         exit_fail_if ((source_file == NULL), 
                 "Error: could not open file %s\n", 
@@ -332,97 +365,118 @@ int main(int argc, char ** argv)
                 case '#':
                 case '=':
                 case '+':
+                    if (*(s + 1) != '\'' && *(s + 1) != '\"') 
+                    {
+                        printf("Warning: chunk definition sequence on line %d is missing a quote-delimited name. Ignoring\n", line_number);
+                        break;
+                    }
+                    else
                     {
                         code_chunk * chunk;
-                        int done = 0; 
-
-                        if (*(s + 1) != '\'' && *(s + 1) != '\"') /* not a chunk definition */ break;
-
                         {
-                            char type = *s++;
-                            char * name = extract_name(&s);
-                            int tangle = type == '#';
-                            int append = type == '+';
-                            
-                            chunk = dict_get(d, name);
-                            if (chunk == NULL) /* new chunk definition */
+                            /* (1) */
+                            int tangle = *s == '#';
+                            int append = *s == '+';
+
+                            ++s; /* (2.a) */
+                            char * name = extract_name(&s); /* (2.b) */
+                            chunk = dict_get(d, name); /* (3) */
+
+                            if (chunk == NULL) /* (4) new chunk definition */
                             {
                                 chunk = code_chunk_new(name);
                                 dict_add(d, chunk);
                             }
-                            else if (!append)
+                            else if (!append) /* (5) */
                             {
-                                exit_fail_if(chunk->contents != NULL, 
+                                exit_fail_if(chunk->contents != NULL, /* (6) */
                                         "Error: redefinition of chunk '%s' on line %d.\n    Maybe you meant to use a + chunk or accidentally used the same name twice.\n", 
                                         name, line_number);
                                 /* todo: free existing chunk? */
                             }
-                            if (tangle) list_push(&tangles, (void *)chunk);
+                            if (tangle) list_push(&tangles, (void *)chunk); /* (7) */
                         }
 
-                        exit_fail_if(!advance_to_next_line(&s), 
+                        exit_fail_if(!advance_to_next_line(&s), /* (8) */
                                 "Error: file ended before beginning of definition of chunk '%s' on line '%d'\n", 
                                 chunk->name, line_number);
-
-                        while (!done) 
                         {
-                            char * start_of_line = s;
-                            while(1) /* process one line */
+                            char * start_of_line = s; /* (1) */
+                            for (;;)
                             {
-                                if (*s == '\n')
+                                if (*s == '\n') /* (2.a) */
                                 {
-                                    chunk_contents * full_line = code_contents_new(start_of_line);
-                                    list_push_back(&chunk->contents, (void *)full_line);
-                                    *s++ = '\0';
-                                    ++line_number;
-                                    break;
+                                    chunk_contents * full_line = code_contents_new(start_of_line); /* (1) */
+                                    list_push_back(&chunk->contents, (void *)full_line); /* (2) */
+                                    ++line_number; /* (3) */
+                                    *s++ = '\0'; /* (4) */
+                                    start_of_line = s; /* (3.a) */
                                 }
-                                else if (*s == ATSIGN)
+                                else if (*s == ATSIGN) /* (2.b) */
                                 {
                                     ++s;
-                                    if (*s == '{')
+                                    if (*s == '/')
                                     {
-                                        *(s - 1) = '\0'; /* terminate the indent string in place; s - 1 is the ATSIGN */
-                                        char * name = extract_name(&s);
-                                        code_chunk * ref = dict_get(d, name);
-                                        if (ref == NULL) /* chunk hasn't been defined yet */
+                                        advance_to_next_line(&s);
+                                        break;
+                                    }
+                                    else if (*s == '{')
+                                    {
+                                        code_chunk * ref;
+                                        char * indent = start_of_line; /* (1.a) */
+
                                         {
-                                            ref = code_chunk_new(name);
-                                            dict_add(d, ref);
+                                            char * end_of_indent = s - 1; /* (1.b) */
+                                            *end_of_indent = '\0'; /* (1.c) */
                                         }
-                                        char * indent = start_of_line;
-                                        list_push_back(&chunk->contents, (void *)reference_contents_new(indent, ref));
-                                        exit_fail_if(!advance_to_next_line(&s), 
-                                                "Error: file ended during definition of chunk '%s'\n    following invocation of chunk '%s' on line '%d'\n", 
-                                                chunk->name, name, line_number);
+
+                                        {
+                                            char * name = extract_name(&s); /* (2.a) */
+                                            ref = dict_get(d, name); /* (2.b) */
+                                            if (ref == NULL) /* chunk hasn't been defined yet */
+                                            {
+                                                ref = code_chunk_new(name); /* (2.c) */
+                                                dict_add(d, ref);
+                                            }
+                                            exit_fail_if(!advance_to_next_line(&s), /* (4) */
+                                                    "Error: file ended during definition of chunk '%s'\n    following invocation of chunk '%s' on line '%d'\n", 
+                                                    chunk->name, name, line_number);
+                                        }
+
+                                        list_push_back(&chunk->contents, (void *)reference_contents_new(indent, ref)); /* (3) */
                                     }
                                     else if (*s == ATSIGN)
                                     {
                                         chunk_contents * beginning_part = code_contents_new(start_of_line);
-                                        chunk_contents * end_part = code_contents_new(s);
+                                        chunk_contents * ending_part = code_contents_new(s);
                                         char * at_the_atsign = s - 1;
-
-                                        beginning_part->partial_line = 1;
-                                        list_push_back(&chunk->contents, (void *)beginning_part);
-                                        list_push_back(&chunk->contents, (void *)end_part);
 
                                         exit_fail_if(!advance_to_next_line(&s), 
                                                 "Error: file ended during definition of chunk '%s'\n    following the escape sequence on line '%d'\n", 
                                                 chunk->name, line_number);
 
+                                        /* (1) */
                                         *at_the_atsign = '\0'; /* terminate beginning part */
                                         *(s - 1) = '\0'; /* terminate end part; s - 1 points to a newline character */
+
+                                        beginning_part->partial_line = 1; /* (2) */
+
+                                        list_push_back(&chunk->contents, (void *)beginning_part);
+                                        list_push_back(&chunk->contents, (void *)ending_part);
                                     }
-                                    else if (*s == '/')
+                                    else /* (3.c) */
                                     {
-                                        done = 1; /* break out of chunk definition loop */
-                                        advance_to_next_line(&s);
+                                        printf("Warning: unrecognized control sequence ATSIGN%c while parsing chunk on line %d\n",
+                                                *s, line_number);
+                                        continue; /* (3.d) */
                                     }
-                                    /* else ignore this ATSIGN and carry on */
-                                    break;
+                                    start_of_line = s; /* (3.b) */
                                 }
-                                else exit_fail_if(*s == '\0', "File ended during definition of chunk %s", chunk->name);
-                                /* else */ ++s;
+                                else /* (4) */ 
+                                {
+                                    exit_fail_if(*s == '\0', "File ended during definition of chunk %s", chunk->name);
+                                    ++s;
+                                }
                             }
                         }
                     }
@@ -433,17 +487,20 @@ int main(int argc, char ** argv)
                                  || *s == ':' || *s == '/' || *s == '\n'), 
                             "Error: cannot redefine ATSIGN to a character used in control sequences on line %d\n",
                             line_number);
-                    ATSIGN = *s;
+                    ATSIGN = *s++;
                     break;
+                default:
+                    printf("Warning: unrecognized control sequence ATSIGN%c while scanning prose on line %d\n",
+                            *s, line_number);
                 }
             }
         }
     }
-    for(; tangles != NULL; tangles = tangles->successor)
+    for(; tangles != NULL; tangles = tangles->successor) /* (1) */
     {
         FILE * f;
         code_chunk * c = tangles->data;
-        f = fopen(c->name, "w");
+        f = fopen(c->name, "w"); /* (2) */
         if (f == NULL)
         {
             fprintf(stderr,
@@ -451,7 +508,7 @@ int main(int argc, char ** argv)
                     c->name, c->name);
             continue;
         }
-        code_chunk_print(f, d, c, NULL);
+        code_chunk_print(f, d, c, NULL); /* (3) */
         fclose(f);
     }
     return 0;

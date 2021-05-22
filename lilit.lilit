@@ -6,27 +6,12 @@ that aims to provide the absolute bare minimum of functionality needed to
 enable writing programs in a literate programming style.  All `lilit` does is
 scan a plain-text file for a handful of control sequences, extract source code
 delimited by those control sequences, and output source code files by
-recursively expanding the chunks of code thus found. This is clear from the
-high level structure of `lilit`'s source code:
-
-```c
-// ~#'lilit.c'
-~{definitions}
-
-int main(int argc, char ** argv)
-{
-    ~{setup}
-    ~{extract code chunks}
-    ~{output tangle chunks recursively}
-    return 0;
-}
-// end lilit.c ~/ ~
-```
+recursively expanding the chunks of code thus found. 
 
 This minimalist approach ensures users of `lilit` can depend on it to continue
 working reliably and easily modify the source code to tailor the program to
 their specific needs, such as adding support for a particular typesetting
-markup.
+markup or programming language.
 
 # what is literate programming?
 
@@ -192,6 +177,7 @@ writer wishes to produce a typeset document from the source code, typesetting
 markup may be written directly in the lilit-formatted document and the
 typesetting system can be run directly on this document. For example, this
 literate source document for `lilit` is typeset in Github-flavored Markdown.
+Alternatively, the user may edit the program to introduce support for weaving.
 
 Despite its intentional limitations, `lilit` provides enough functionality to
 enable writing in a literate programming style.  Code chunks can be presented
@@ -220,14 +206,19 @@ control sequence.\n\
 \n\
 ATSIGN:new control character  Redefines ATSIGN to whatever immediately follows\n\
                               the : sign. This is useful if your machine source\n\
-                              language uses lots of @ signs, for example.\n\
+                              language uses lots of @ signs, for example. This\n\
+                              control sequence is ignored if it occurs inside\n\
+                              a code chunk definition.\n\
 \n\
-ATSIGN='chunk name'           Begin a regular chunk declaration. The chunk name\n\
+ATSIGN='chunk name'           Begin a regular chunk definition. The chunk name\n\
                               must be surrounded by matching single (') or\n\
                               double (\") quotes (no backticks). The chunk\n\
                               definition itself begins on the next line.\n\
+                              Anything preceeding the ATSIGN and following the\n\
+                              final quote sign is ignored, allowing this control\n\
+                              sequence to be wrapped in typesetting markup.\n\
 \n\
-ATSIGN#'chunk name'           Begin a tangle chunk declaration. This is similar\n\
+ATSIGN#'chunk name'           Begin a tangle chunk definition. This is similar\n\
                               to a regular chunk, except the name of the chunk\n\
                               is also interpreted as a file name, and the chunk\n\
                               is recursively expanded into the file with that\n\
@@ -235,219 +226,111 @@ ATSIGN#'chunk name'           Begin a tangle chunk declaration. This is similar\
 \n\
 ATSIGN+'chunk name'           Append to a chunk. The code starting on the\n\
                               next line will be added at the end of the chunk\n\
-                              named by 'chunk name'. If no such chunk exists,\n\
-                              then one will be created. This is useful e.g. for\n\
+                              named by 'chunk name'. This is useful e.g. for\n\
                               adding #include directives to the top of a c file.\n\
+                              If no such chunk already exists, then this control\n\
+                              sequence is equivalent to a normal chunk\n\
+                              definition (ATSIGN='name').\n\
 \n\
 ATSIGN{chunk invocation}      Invoke a chunk to be recursively expanded into any\n\
-                              tangled output files.\n\
+                              tangled output files. Anything preceeding the\n\
+                              ATSIGN is considered as indentation, and every\n\
+                              line of code in the recursively expanded chunk\n\
+                              will have this indent prepended to it. Anything\n\
+                              following the closing brace is ignored, however it\n\
+                              is recommended not to put anything there for\n\
+                              compatibility with possible future extensions that\n\
+                              may make use of this space (i.e. text following\n\
+                              the closing brace is reserved).\n\
 \n\
-ATSIGNATSIGN                  Escape sequence. A literal ATSIGN sign with no\n\
-                              special meaning to lilit that will be copied as an\n\
-                              ATSIGN to any output tangled documents.\n\
+ATSIGNATSIGN                  Escape sequence. The rest of the line following\n\
+                              the initial ATSIGN (including the second ATSIGN)\n\
+                              is treated as normal code to copy to output\n\
+                              tangled documents. This allows ATSIGN and special\n\
+                              control sequences to be passed through to the\n\
+                              output documents.\n\
 \n\
 ATSIGN/                       End an ongoing chunk declaration.\n\
+\n\
+ATSIGN[anything else]         An ATSIGN followed by any other character is\n\
+                              ignored. However, it is recommended to avoid such\n\
+                              character sequences for compatibility with future\n\
+                              extensions.\n\
 \n";
 // end help text ~/ ~
 ```
 
-## Program Overview
+## program overview
 
-As described in the introduction, `lilit` is implemented with three main
+`lilit` is implemented with three main
 processing stages: setup, extraction, and output. The setup phase reads the
 file to be processed into memory. During extraction, the file is scanned for
 code chunk definitions, and these are logged in data structures convenient for
 output. The output phase then recursively expands code chunks into files.
 
-## Code Chunk Extraction
-
 ```c
-// ~+'globals'
-char ATSIGN = '@';
-// ~/ ~
+// ~#'lilit.c'
+~{definitions}
+
+int main(int argc, char ** argv)
+{
+    ~{setup}
+    ~{extract code chunks}
+    ~{output tangle chunks recursively}
+    return 0;
+}
+// end lilit.c ~/ ~
 ```
 
-While scanning and extracting code chunks, anytime a newline character is
-encountered the variable `line_number` is incremented.  `line_number` is
-currently only used when printing error messages to help the user find the
-location of the error.
+## code chunk extraction
+
+### code chunk representation
+
+A chunk of code is represented by the following structure:
 
 ```c
-// ~+'globals'
-int line_number = 1;
-// ~/ ~
-```
-
-The outer-most loop of the extraction phase ignores your literate prose while
-scanning for control sequences. When one is found, control passes to the inner
-loop where the chunks are actually extracted.
-
-```c
-// ~='extract code chunks'
-{
-    char * s = source;
-    while (*s != '\0')
-    {
-        if (*s == '\n') ++s, ++line_number;
-        else if (*s++ == ATSIGN)
-        {
-            switch (*s)
-            {
-            case '#':
-            case '=':
-            case '+':
-                ~{extract chunk definition}
-                break;
-            case ':':
-                ~{redefine ATSIGN}
-                break;
-            }
-        }
-    }
-}
-// ~/ ~
-
-// ~='redefine ATSIGN'
-++s;
-exit_fail_if (( *s == '=' || *s == '#' || *s == '+' || *s == '{' 
-             || *s == ':' || *s == '/' || *s == '\n'), 
-        "Error: cannot redefine ATSIGN to a character used in control sequences on line %d\n",
-        line_number);
-ATSIGN = *s;
-// ~/ ~
-
-// ~='extract chunk definition'
-{
-    code_chunk * chunk;
-    int done = 0; 
-
-    if (*(s + 1) != '\'' && *(s + 1) != '\"') /* not a chunk definition */ break;
-
-    ~{prepare chunk}
-
-    while (!done) 
-    {
-        char * start_of_line = s;
-        while(1) /* process one line */
-        {
-            if (*s == '\n')
-            {
-                ~{extract code line}
-                break;
-            }
-            else if (*s == ATSIGN)
-            {
-                ~{process control sequence inside chunk definition}
-                break;
-            }
-            else exit_fail_if(*s == '\0', "File ended during definition of chunk %s", chunk->name);
-            /* else */ ++s;
-        }
-    }
-}
-// ~/ ~
-
-// ~='prepare chunk'
-{
-    char type = *s++;
-    char * name = extract_name(&s);
-    int tangle = type == '#';
-    int append = type == '+';
-    
-    chunk = dict_get(d, name);
-    if (chunk == NULL) /* new chunk definition */
-    {
-        chunk = code_chunk_new(name);
-        dict_add(d, chunk);
-    }
-    else if (!append)
-    {
-        exit_fail_if(chunk->contents != NULL, 
-                "Error: redefinition of chunk '%s' on line %d.\n    Maybe you meant to use a + chunk or accidentally used the same name twice.\n", 
-                name, line_number);
-        /* todo: free existing chunk? */
-    }
-    if (tangle) list_push(&tangles, (void *)chunk);
-}
-
-exit_fail_if(!advance_to_next_line(&s), 
-        "Error: file ended before beginning of definition of chunk '%s' on line '%d'\n", 
-        chunk->name, line_number);
-// ~/ ~
-
-// ~='process control sequence inside chunk definition'
-++s;
-if (*s == '{')
-{
-    ~{extract reference line}
-}
-else if (*s == ATSIGN)
-{
-    ~{extract line with escape sequence}
-}
-else if (*s == '/')
-{
-    done = 1; /* break out of chunk definition loop */
-    advance_to_next_line(&s);
-}
-/* else ignore this ATSIGN and carry on */
-// ~/ ~
-
-// ~='extract line with escape sequence'
-chunk_contents * beginning_part = code_contents_new(start_of_line);
-chunk_contents * end_part = code_contents_new(s);
-char * at_the_atsign = s - 1;
-
-beginning_part->partial_line = 1;
-list_push_back(&chunk->contents, (void *)beginning_part);
-list_push_back(&chunk->contents, (void *)end_part);
-
-exit_fail_if(!advance_to_next_line(&s), 
-        "Error: file ended during definition of chunk '%s'\n    following the escape sequence on line '%d'\n", 
-        chunk->name, line_number);
-
-*at_the_atsign = '\0'; /* terminate beginning part */
-*(s - 1) = '\0'; /* terminate end part; s - 1 points to a newline character */
-// ~/ ~
-
-// ~='extract code line'
-chunk_contents * full_line = code_contents_new(start_of_line);
-list_push_back(&chunk->contents, (void *)full_line);
-*s++ = '\0';
-++line_number;
-// ~/ ~
-
-// ~='extract reference line'
-*(s - 1) = '\0'; /* terminate the indent string in place; s - 1 is the ATSIGN */
-char * name = extract_name(&s);
-code_chunk * ref = dict_get(d, name);
-if (ref == NULL) /* chunk hasn't been defined yet */
-{
-    ref = code_chunk_new(name);
-    dict_add(d, ref);
-}
-char * indent = start_of_line;
-list_push_back(&chunk->contents, (void *)reference_contents_new(indent, ref));
-exit_fail_if(!advance_to_next_line(&s), 
-        "Error: file ended during definition of chunk '%s'\n    following invocation of chunk '%s' on line '%d'\n", 
-        chunk->name, name, line_number);
-// ~/ ~
-
 // ~='code chunk struct'
-typedef enum ContentType {code, reference} content_t;
-
 typedef struct CodeChunk
 {
     char * name;
     list * contents;
 } code_chunk;
+// ~/
+```
 
+The list of contents is in turn populated by entries in the form of the
+following structure:
+
+```c
+// ~+'code chunk struct'
 typedef struct ChunkContents
 {
     char * string;
     code_chunk * reference;
     int partial_line;
 } chunk_contents;
+// ~/
+```
+
+There are two different types of chunk contents, which can be differentiated on
+the basis of how the fields of the `chunk_contents` struct are populated. The
+most common kind of contents is a single line of code. In this case the
+`string` field represents the line of code, and the `reference` field is left
+empty (i.e. points to `NULL`). The other kind of contents is a chunk
+invocation.  In this case the `string` field represents the indentation
+preceeding the invocation, while the `reference` field points to the chunk
+referred to by the invocation. An enum type and a function are provided which
+formalise the distinction, and subroutines are provided for constructing
+contents of one or the other type, as well as for constructing a code chunk.
+
+// ~+'code chunk struct'
+typedef enum ContentType {code, reference} content_t;
+
+content_t contents_type(chunk_contents * c)
+{
+    if (c->reference != NULL) return reference;
+    else return code;
+}
 
 chunk_contents * code_contents_new(char * code)
 {
@@ -467,12 +350,6 @@ chunk_contents * reference_contents_new(char * indent, code_chunk * ref)
     return c;
 }
 
-content_t contents_type(chunk_contents * c)
-{
-    if (c->reference != NULL) return reference; 
-    else return code;
-}
-
 code_chunk * code_chunk_new(char * name)
 {
     code_chunk * chunk = malloc(sizeof(code_chunk));
@@ -481,20 +358,318 @@ code_chunk * code_chunk_new(char * name)
     return chunk;
 }
 // ~/ ~
+
+### scanning for code
+
+The outer-most loop of the extraction phase ignores your literate prose while
+scanning for control sequences and newline characters. Anytime a newline
+character is encountered the variable `line_number` is incremented.
+`line_number` is currently only used when printing error messages to help the
+user find the location of the error.  When an `ATSIGN` is encountered, control
+flow switches depending on the character following the ATSIGN. Redefining
+ATSIGN and printing a warning when encountering an unknown control sequence are
+simple cases and copied below.
+
+```c
+// ~+'globals'
+char ATSIGN = '@';
+int line_number = 1;
+// ~/ ~
+
+// ~='extract code chunks'
+{
+    char * s = source;
+    while (*s != '\0')
+    {
+        if (*s == '\n') ++s, ++line_number;
+        else if (*s++ == ATSIGN)
+        {
+            switch (*s)
+            {
+            case '#':
+            case '=':
+            case '+':
+                ~{extract chunk definition}
+                break;
+            case ':':
+                ++s;
+                exit_fail_if (( *s == '=' || *s == '#' || *s == '+' || *s == '{' 
+                             || *s == ':' || *s == '/' || *s == '\n'), 
+                        "Error: cannot redefine ATSIGN to a character used in control sequences on line %d\n",
+                        line_number);
+                ATSIGN = *s++;
+                break;
+            default:
+                printf("Warning: unrecognized control sequence ATSIGN%c while scanning prose on line %d\n",
+                        *s, line_number);
+            }
+        }
+    }
+}
+// ~/ ~
 ```
 
-## Code Tangling and Output
+### parsing and extracting a chunk
+
+When a well formed chunk definition is encountered, a new chunk is created or
+an existing one is retrieved for appending to, and an inner loop
+parses the chunk definition. 
+
+```c
+// ~='extract chunk definition'
+if (*(s + 1) != '\'' && *(s + 1) != '\"') 
+{
+    printf("Warning: chunk definition sequence on line %d is missing a quote-delimited name. Ignoring\n", line_number);
+    break;
+}
+else
+{
+    code_chunk * chunk;
+    ~{prepare chunk}
+    ~{parse chunk}
+}
+// ~/ ~
+```
+
+When a chunk definition is found, `s` points to the character following the
+ATSIGN, which determines what type of definition to extract (1).  The next
+character is either a single or double quote, and `s` is advanced to this
+character (2.a) before being passed to `extract_name` to fulfill the invariant
+of that function (that `s` should point to the delimeter surrounding the name
+when it is passed into the function) (2.b). 
+
+Once the name is extracted, any existing chunk by that name is retrieved from
+the chunk dictionary (3). If no chunk by the given name already exists, then a
+new one is allocated (4). This is the expected behaviour of regular and tangle
+definitions, and append definitions if the named chunk hasn't been defined
+already.
+
+If the named chunk already exists and the definition is a regular or tangle
+chunk (5), then the contents list of the chunk has to be examined. If it is not
+empty, this indicates that the chunk is being redefined, which is considered an
+error (6). If the contents list is empty, then the chunk must have been
+allocated in response to its invocation in a chunk defined before the present
+definition. In this case, or in case the existing chunk was explicitly
+retrieved for appending to, nothing else needs to be done. If requested, the
+selected chunk is added to the list of chunks to tangle into output machine
+code (7), and then `s` is advanced to point to the start of the next line (8).
+Chunk parsing and extraction can now proceed to populate the contents list of
+`chunk`.
+
+```c
+// ~='prepare chunk'
+{
+    /* (1) */
+    int tangle = *s == '#';
+    int append = *s == '+';
+
+    ++s; /* (2.a) */
+    char * name = extract_name(&s); /* (2.b) */
+    chunk = dict_get(d, name); /* (3) */
+
+    if (chunk == NULL) /* (4) new chunk definition */
+    {
+        chunk = code_chunk_new(name);
+        dict_add(d, chunk);
+    }
+    else if (!append) /* (5) */
+    {
+        exit_fail_if(chunk->contents != NULL, /* (6) */
+                "Error: redefinition of chunk '%s' on line %d.\n    Maybe you meant to use a + chunk or accidentally used the same name twice.\n", 
+                name, line_number);
+        /* todo: free existing chunk? */
+    }
+    if (tangle) list_push(&tangles, (void *)chunk); /* (7) */
+}
+
+exit_fail_if(!advance_to_next_line(&s), /* (8) */
+        "Error: file ended before beginning of definition of chunk '%s' on line '%d'\n", 
+        chunk->name, line_number);
+// ~/ ~
+```
+
+Once the `chunk` is prepared and pointing to the chunk to edit, parsing takes
+place. `s` points to the beginning of the first line of the chunk on entry to
+the parse loop (1). The loop scans until it encounters a newline (2.a) or a
+control sequence (2.b). In these cases, a full line can be extracted, and the
+pointer to the `start_of_line` can be updated (3.a, 3.b). An exception is when
+an unrecognized control sequence is encountered (3.c), in which case the loop
+continues processing the line from the character after the false-alarm ATSIGN
+(3.d). The loop may also scan to the end of the file if there is an error, such
+as if the author forgets to put a termination sequence at the end of the last
+chunk definition in the file (4).
+
+```c
+// ~='parse chunk'
+{
+    char * start_of_line = s; /* (1) */
+    for (;;)
+    {
+        if (*s == '\n') /* (2.a) */
+        {
+            ~{extract code line}
+            start_of_line = s; /* (3.a) */
+        }
+        else if (*s == ATSIGN) /* (2.b) */
+        {
+            ++s;
+            if (*s == '/')
+            {
+                ~{end chunk extraction}
+            }
+            else if (*s == '{')
+            {
+                ~{extract reference line}
+            }
+            else if (*s == ATSIGN)
+            {
+                ~{extract line with escape sequence}
+            }
+            else /* (3.c) */
+            {
+                printf("Warning: unrecognized control sequence ATSIGN%c while parsing chunk on line %d\n",
+                        *s, line_number);
+                continue; /* (3.d) */
+            }
+            start_of_line = s; /* (3.b) */
+        }
+        else /* (4) */ 
+        {
+            exit_fail_if(*s == '\0', "File ended during definition of chunk %s", chunk->name);
+            ++s;
+        }
+    }
+}
+// ~/
+```
+
+A line of code is extracted when the parse scans a whole line without
+encountering any control sequences. The pointer to the start of the line is
+copied to a new contents list entry (1), and the entry is added to the list
+(2).  The line number is incremented manually (3).
+
+The newline character at the end of the line is then changed in place to a
+null character (4), effectively terminating the string pointed to by the
+contents list entry; this strategy is used throughout the program, for
+extracting code, indents, and chunk names, and saves from having to allocate
+more memory to copy strings that are already represented in the memory region
+pointed to by `s`. 
+
+```c
+// ~='extract code line'
+chunk_contents * full_line = code_contents_new(start_of_line); /* (1) */
+list_push_back(&chunk->contents, (void *)full_line); /* (2) */
+++line_number; /* (3) */
+*s++ = '\0'; /* (4) */
+// ~/ ~
+```
+
+When the control sequence for the end of the chunk definition is encountered,
+`s` is simply advanced to the next line and the extraction loop is escaped with
+a `break` statement. No further action is necessary.
+
+```c
+// ~='end chunk extraction'
+advance_to_next_line(&s);
+break;
+// ~/
+```
+
+When a chunk invocation sequence is encountered, three things need to happen:
+
+    (1) the indent string needs to be extracted, 
+    (2) a pointer to the chunk referred to by the invocation needs to be retrieved, 
+    (3) and both of these need to be added to the contents list.
+
+The `start_of_line` pointer already marks the beginning of the indent (1.a).
+The ATSIGN marks the end of the indent, so it is converted to a null character
+(1.b, 1.c), terminating the indent string in place.
+
+To get a pointer to the chunk referred to by the invocation, the name between
+the braces of the invocation (2.a) is looked up in the chunk dictionary (2.b).
+If the chunk doesn't already exist, a new chunk is constructed using the name
+from the invocation (2.c). This chunk can be defined later, at which point it
+will be recognized as having been invoked before its definition by the fact
+that its contents list is empty.
+
+With a pointer to the chunk and a pointer to the null terminated indent ready,
+the new contents entry can be constructed and appended to the contents list (3).
+The rest of the line is ignored (4).
+
+```c
+// ~='extract reference line'
+code_chunk * ref;
+char * indent = start_of_line; /* (1.a) */
+
+{
+    char * end_of_indent = s - 1; /* (1.b) */
+    *end_of_indent = '\0'; /* (1.c) */
+}
+
+{
+    char * name = extract_name(&s); /* (2.a) */
+    ref = dict_get(d, name); /* (2.b) */
+    if (ref == NULL) /* chunk hasn't been defined yet */
+    {
+        ref = code_chunk_new(name); /* (2.c) */
+        dict_add(d, ref);
+    }
+    exit_fail_if(!advance_to_next_line(&s), /* (4) */
+            "Error: file ended during definition of chunk '%s'\n    following invocation of chunk '%s' on line '%d'\n", 
+            chunk->name, name, line_number);
+}
+
+list_push_back(&chunk->contents, (void *)reference_contents_new(indent, ref)); /* (3) */
+// ~/ ~
+```
+
+A line with an escape sequence is very similar to a regular line of code,
+except with an extra ATSIGN in the middle that shouldn't be tangled to outputs.
+This is represented by adding two entries to the contents list, the beginning part spans
+from the beginning of the line up to (but not including) the first ATSIGN. The
+ending part spans from the second ATSIGN to the end of the line, including the
+second ATSIGN in its range. These are terminated in place at the end of the
+subroutine after `s` has been advanced to the end of the line (1).
+
+The beginning part is marked as a partial line. This flag is picked up by the
+tangling subroutine to suppress the newline that is normally printed after code
+entries (2).
+
+```c
+// ~='extract line with escape sequence'
+chunk_contents * beginning_part = code_contents_new(start_of_line);
+chunk_contents * ending_part = code_contents_new(s);
+char * at_the_atsign = s - 1;
+
+exit_fail_if(!advance_to_next_line(&s), 
+        "Error: file ended during definition of chunk '%s'\n    following the escape sequence on line '%d'\n", 
+        chunk->name, line_number);
+
+/* (1) */
+*at_the_atsign = '\0'; /* terminate beginning part */
+*(s - 1) = '\0'; /* terminate end part; s - 1 points to a newline character */
+
+beginning_part->partial_line = 1; /* (2) */
+
+list_push_back(&chunk->contents, (void *)beginning_part);
+list_push_back(&chunk->contents, (void *)ending_part);
+// ~/ ~
+```
+
+## code tangling and output
 
 Each code chunk recorded in the list of chunks to tangle is output to a file
-named the same as the code chunk:
+named the same as the code chunk. The top level loop iterates over all the
+tangle chunks (1), opens their file (2), and calls into the recursive print
+function (3):
 
 ```c
 // ~='output tangle chunks recursively'
-for(; tangles != NULL; tangles = tangles->successor)
+for(; tangles != NULL; tangles = tangles->successor) /* (1) */
 {
     FILE * f;
     code_chunk * c = tangles->data;
-    f = fopen(c->name, "w");
+    f = fopen(c->name, "w"); /* (2) */
     if (f == NULL)
     {
         fprintf(stderr,
@@ -502,16 +677,16 @@ for(; tangles != NULL; tangles = tangles->successor)
                 c->name, c->name);
         continue;
     }
-    code_chunk_print(f, d, c, NULL);
+    code_chunk_print(f, d, c, NULL); /* (3) */
     fclose(f);
 }
 // ~/ ~
 ```
 
-Outputting tangle chunks is done mainly by `code_chunk_print`, which calls
-itself recursively. This function proceeds character by character. Most
-characters are simply echoed to the output file.  When a newline is
-encountered, this also causes indentation to be printed. 
+The representation of code chunks is designed mainly for the convenience of
+this function. Every contents entry is either a line of code or a reference to
+another chunk. If a chunk contains code (1), it is printed. Otherwise, the
+function recurses.
 
 ```c
 // ~='code chunk print'
@@ -523,34 +698,76 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, list * indents)
         chunk_contents * contents = l->data;
         if (contents_type(contents) == code)
         {
-            if (*contents->string != '\0')
-            {
-                /* print indents on non-empty lines */
-                list * i;
-                for (i = indents; i != NULL; i = i->successor)
-                {
-                    fputs((char *)i->data, f);
-                }
-            }
-            fputs(contents->string, f); 
-            if (contents->partial_line == 0) fputc('\n', f);
+            ~{print code}
         }
         else if (contents_type(contents) == reference)
         {
-            code_chunk * next_c = contents->reference;
-            list_push(&indents, (void *)contents->string);
-            code_chunk_print(f, d, next_c, indents);
-            list_pop(&indents);
+            ~{recurse}
         }
     }
 }
 // ~/ ~
 ```
 
-## Extra Details
+
+Chunk invocation contents entries keep track of indentation in their struct.
+In order to ensure that nested invocations end up with nested indentation, all
+of the indents have to be kept track of. A linked list of indents is used for
+this purpose. As the print function recurses deeper, indents are appended to
+the list. As the layers peel back again, the indents are removed from the list.
+
+```c
+// ~='recurse'
+code_chunk * next_c = contents->reference;
+list_push_back(&indents, (void *)contents->string);
+code_chunk_print(f, d, next_c, indents);
+list_pop_back(&indents);
+// ~/
+
+When it comes time to print a line of code, the list of indents is expanded and
+the contents of the line are printed, except when the line is empty (1). When a<c-w>bfile 
+partial line is encountered, its successor is immediately printed; this is
+necessary to avoid indentation being printed after escape sequences (2). Finally,
+a newline terminates the line of code (3).
+
+```c
+// ~='print code'
+if (*contents->string != '\0') /* (1) */
+{
+    /* print indents on non-empty lines */
+    list * i;
+    for (i = indents; i != NULL; i = i->successor)
+    {
+        fputs((char *)i->data, f);
+    }
+    fputs(contents->string, f); 
+}
+
+
+if (contents->partial_line) /* (2) */
+{
+    l = l->successor;
+    exit_fail_if(l == NULL, "Error: partial line without successor in chunk '%s':\n    %s", c->name, contents->string);
+    contents = l->data;
+    fputs(contents->string, f);
+}
+
+fputc('\n', f); /* (3) */
+// ~/
+```
+
+## extra details
 
 Read on if you are interested in further details, such as the definition of the
 list and dict datatypes, the helper functions, and other minutiae.
+
+### list type
+
+This is a very simple implementation of a linked list. The user is responsible
+for ensuring the list entries are appropriately converted to and from void
+pointers, and for managing the memory and lifetime of the data in the entries,
+but the list nodes themselves are allocated and freed appropriately
+automatically.
 
 ```c
 // ~='data types'
@@ -587,21 +804,27 @@ void list_push_back(list ** lst, void * elem)
     }
 }
 
-list * list_pop_back(list ** lst)
+void list_pop_back(list ** lst)
 {
-    if (*lst == NULL) return NULL;
+    if (*lst == NULL) return;
     if ((*lst)->successor == NULL)
     {
         free((void *)(*lst));
         *lst = NULL;
-        return NULL;
+        return;
     }
+    else
     {
-        list * l = (*lst)->successor;
-        while (l->successor != NULL) l = l->successor;
-        free((void *)l->successor);
-        l->successor = NULL;
-        return l;
+        list * l1 = *lst;
+        list * l2 = (*lst)->successor;
+        while (l2->successor != NULL) 
+        {
+            l1 = l2;
+            l2 = l2->successor;
+        }
+        free((void *)l2);
+        l1->successor = NULL;
+        return;
     }
 }
 
@@ -628,7 +851,19 @@ void list_pop(list ** lst)
     *lst = l;
     free((void *)p);
 }
+// ~/
+```
 
+### dict type
+
+This is a very simple hash map dictionary. It only holds code chunks, but code
+chunks are technically just named lists, so really it could hold anything. The
+above linked list implementation is used to hold entries, so the memory etc.
+management features are basically the same as for lists (i.e. basically none),
+except there's currently no way to remove entries from the dict.
+
+```c
+// ~+'data types'
 ~{code chunk struct}
 
 /* http://www.cse.yorku.ca/~~oz/hash.html */
@@ -678,6 +913,11 @@ code_chunk * dict_get(dict * d, char * name)
 ~/ ~
 ```
 
+### helper functions
+
+This one is a wrapper around `printf` for killing the program if an
+unrecoverable error is encountered.
+
 ```c
 // ~='functions'
 void exit_fail_if(int condition, char * message, ...)
@@ -689,7 +929,18 @@ void exit_fail_if(int condition, char * message, ...)
     va_end(args);
     exit(EXIT_FAILURE);
 }
+// ~/
+```
 
+This one null terminates in place a name delimited by matching identical
+characters (e.g. 'name', "name", .name., $name$) or braces (e.g. {name})
+returns the name, and as a side effect advances the `char *` to the character
+after the terminal name delimiter. The pointer argument must point to the first
+delimiter, and the function fails if the second delimiter can't be found on
+the line, or if the name is empty.
+
+```c
+// ~+'functions'
 char * extract_name(char ** source)
 {
     char * s = *source;
@@ -708,7 +959,17 @@ char * extract_name(char ** source)
     *source = s + 1;
     return destination;
 }
+// ~/
+```
 
+This helper scans for the end of the line, incrementing `line_number` if
+successful, and returning 0 if unsuccessful. Failure, in this case, means that
+the end of the file was encountered before the end of the line, and the fail
+state is returned instead of just dying so the caller can provide more detail
+in the error message.
+
+```c
+// ~+'functions'
 int advance_to_next_line(char ** source)
 {
     char * s = *source;
@@ -717,24 +978,18 @@ int advance_to_next_line(char ** source)
     ++line_number;
     return 1;
 }
+// ~/
+```
 
+Code chunk print is described above, and appended here in the program.
+
+```c
+// ~+'functions'
 ~{code chunk print}
 // ~/ ~
 ```
 
-```c
-// ~='definitions'
-~{includes}
-
-~{globals}
-
-~{data types}
-
-~{functions}
-
-~{help text}
-// ~/ ~
-```
+### setup routine
 
 ```c
 // ~='setup'
@@ -744,24 +999,15 @@ int advance_to_next_line(char ** source)
 
 ~{load file into `char * source`}
 
-~{allocate additional memory}
+~{allocate dict memory}
 // ~/ ~
 ```
 
-```c
-// ~='includes'
-#include <ctype.h>
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <stddef.h>
-#include <stdarg.h>
-// ~/ ~
-```
+Presently, lilit takes no flags and accepts only one file to tangle at a time. 
 
 ```c
 // ~='parse command line arguments'
-if (argc < 2 || *argv[1] == '-' /* assume -h */) 
+if (argc < 2 || argc > 2 || *argv[1] == '-' /* assume -h */) 
 {
     fprintf(stderr, help, VERSION, argv[0]);
     exit(EXIT_SUCCESS);
@@ -770,19 +1016,8 @@ char * filename = argv[1];
 // ~/ ~
 ```
 
-Since the control sequence leader character can be changed with 'ATSIGN:',
-it's necessary to swap all the ATSIGNs that are found while extracting to
-some stable character to prevent bugs when tangling and weaving. It is
-assumed that ascii 7 (^G, BEL) will never occur in any source code file,
-so we can transliterate ATSIGNs to 7 without having to worry about escapes.
-If anyone ever tries to run `lilit` on a file with actual ascii 7 embedded in
-the text, it will undoubtedly cause errors. If this ever happens, the
-solution would be to detect actual ascii 7 while extracting and embed some
-kind of escape sequence.
-
 ```c
 // ~='variables'
-int file_size;
 char * source;
 dict * d;
 list * tangles = NULL;
@@ -792,6 +1027,7 @@ list * tangles = NULL;
 ```c
 // ~='load file into `char * source`'
 {
+    int file_size;
     FILE * source_file = fopen(filename, "r");
     exit_fail_if ((source_file == NULL), 
             "Error: could not open file %s\n", 
@@ -813,12 +1049,42 @@ list * tangles = NULL;
 ```
 
 ```c
-// ~='allocate additional memory'
+// ~='allocate dict memory'
 d = dict_new(128); /* for storing chunks */
 // ~/ ~
 ```
 
-# tests
+### front matter structure
+
+These last chunks are invoked by the main tangle chunk and serve mainly to
+abstract away some detail at that high level.
+
+```c
+// ~='includes'
+#include <ctype.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <stddef.h>
+#include <stdarg.h>
+// ~/ ~
+```
+
+```c
+// ~='definitions'
+~{includes}
+
+~{globals}
+
+~{data types}
+
+~{functions}
+
+~{help text}
+// ~/ ~
+```
+
+## tests
 
 The main test case for `lilit` is its own literate source (i.e. this document).
 Producing `lilit.c` by tangling `lilit.lilit` exercises all of the control
