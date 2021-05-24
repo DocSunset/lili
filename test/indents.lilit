@@ -32,7 +32,7 @@ two
 @{a}
     @{b}
 ---
-    @{d}
+//  @{d}
 @/ @
 
 @#'indents.expect'
@@ -49,22 +49,22 @@ zero
             three
                 four
 ---
-    zero
-    zero
-        one
-            two
+//  zero
+//  zero
+//      one
+//          two
 
-        one
-        one
-            two
-                three
-            two
-            two
-                three
-                    four
+//      one
+//      one
+//          two
+//              three
+//          two
+//          two
+//              three
+//                  four
 
-            two
-            two
-                three
-                    four
+//          two
+//          two
+//              three
+//                  four
 @/ @
