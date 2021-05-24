@@ -257,7 +257,7 @@ ATSIGN[anything else]         An ATSIGN followed by any other character is\n\
                               character sequences for compatibility with future\n\
                               extensions.\n\
 \n";
-// end help text ~/ ~
+// end help text ~/
 ```
 
 ## program overview
@@ -279,7 +279,7 @@ int main(int argc, char ** argv)
     ~{output tangle chunks recursively}
     return 0;
 }
-// end lilit.c ~/ ~
+// end lilit.c ~/
 ```
 
 ## code chunk extraction
@@ -357,7 +357,7 @@ code_chunk * code_chunk_new(char * name)
     chunk->contents = NULL;
     return chunk;
 }
-// ~/ ~
+// ~/
 
 ### scanning for code
 
@@ -374,7 +374,7 @@ simple cases and copied below.
 // ~+'globals'
 char ATSIGN = '@';
 int line_number = 1;
-// ~/ ~
+// ~/
 
 // ~='extract code chunks'
 {
@@ -406,7 +406,7 @@ int line_number = 1;
         }
     }
 }
-// ~/ ~
+// ~/
 ```
 
 ### parsing and extracting a chunk
@@ -428,7 +428,7 @@ else
     ~{prepare chunk}
     ~{parse chunk}
 }
-// ~/ ~
+// ~/
 ```
 
 When a chunk definition is found, `s` points to the character following the
@@ -485,7 +485,7 @@ Chunk parsing and extraction can now proceed to populate the contents list of
 exit_fail_if(!advance_to_next_line(&s), /* (8) */
         "Error: file ended before beginning of definition of chunk '%s' on line '%d'\n", 
         chunk->name, line_number);
-// ~/ ~
+// ~/
 ```
 
 Once the `chunk` is prepared and pointing to the chunk to edit, parsing takes
@@ -561,7 +561,7 @@ chunk_contents * full_line = code_contents_new(start_of_line); /* (1) */
 list_push_back(&chunk->contents, (void *)full_line); /* (2) */
 ++line_number; /* (3) */
 *s++ = '\0'; /* (4) */
-// ~/ ~
+// ~/
 ```
 
 When the control sequence for the end of the chunk definition is encountered,
@@ -620,7 +620,7 @@ char * indent = start_of_line; /* (1.a) */
 }
 
 list_push_back(&chunk->contents, (void *)reference_contents_new(indent, ref)); /* (3) */
-// ~/ ~
+// ~/
 ```
 
 A line with an escape sequence is very similar to a regular line of code,
@@ -653,7 +653,7 @@ beginning_part->partial_line = 1; /* (2) */
 
 list_push_back(&chunk->contents, (void *)beginning_part);
 list_push_back(&chunk->contents, (void *)ending_part);
-// ~/ ~
+// ~/
 ```
 
 ## code tangling and output
@@ -680,7 +680,7 @@ for(; tangles != NULL; tangles = tangles->successor) /* (1) */
     code_chunk_print(f, d, c, NULL); /* (3) */
     fclose(f);
 }
-// ~/ ~
+// ~/
 ```
 
 The representation of code chunks is designed mainly for the convenience of
@@ -706,7 +706,7 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, list * indents)
         }
     }
 }
-// ~/ ~
+// ~/
 ```
 
 
@@ -910,7 +910,7 @@ code_chunk * dict_get(dict * d, char * name)
     }
     return NULL;
 }
-~/ ~
+~/
 ```
 
 ### helper functions
@@ -986,7 +986,7 @@ Code chunk print is described above, and appended here in the program.
 ```c
 // ~+'functions'
 ~{code chunk print}
-// ~/ ~
+// ~/
 ```
 
 ### setup routine
@@ -1000,7 +1000,7 @@ Code chunk print is described above, and appended here in the program.
 ~{load file into `char * source`}
 
 ~{allocate dict memory}
-// ~/ ~
+// ~/
 ```
 
 Presently, lilit takes no flags and accepts only one file to tangle at a time. 
@@ -1013,7 +1013,7 @@ if (argc < 2 || argc > 2 || *argv[1] == '-' /* assume -h */)
     exit(EXIT_SUCCESS);
 }
 char * filename = argv[1];
-// ~/ ~
+// ~/
 ```
 
 ```c
@@ -1021,7 +1021,7 @@ char * filename = argv[1];
 char * source;
 dict * d;
 list * tangles = NULL;
-// ~/ ~
+// ~/
 ```
 
 ```c
@@ -1045,13 +1045,13 @@ list * tangles = NULL;
     
     source[file_size] = 0;
 }
-// ~/ ~
+// ~/
 ```
 
 ```c
 // ~='allocate dict memory'
 d = dict_new(128); /* for storing chunks */
-// ~/ ~
+// ~/
 ```
 
 ### front matter structure
@@ -1067,7 +1067,7 @@ abstract away some detail at that high level.
 #include <stdio.h>
 #include <stddef.h>
 #include <stdarg.h>
-// ~/ ~
+// ~/
 ```
 
 ```c
@@ -1081,7 +1081,7 @@ abstract away some detail at that high level.
 ~{functions}
 
 ~{help text}
-// ~/ ~
+// ~/
 ```
 
 ## tests
