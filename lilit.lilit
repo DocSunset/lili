@@ -323,6 +323,7 @@ referred to by the invocation. An enum type and a function are provided which
 formalise the distinction, and subroutines are provided for constructing
 contents of one or the other type, as well as for constructing a code chunk.
 
+```c
 // ~+'code chunk struct'
 typedef enum ContentType {code, reference} content_t;
 
@@ -358,6 +359,7 @@ code_chunk * code_chunk_new(char * name)
     return chunk;
 }
 // ~/
+```
 
 ### scanning for code
 
