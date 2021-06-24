@@ -313,31 +313,26 @@ ATSIGNATSIGN                  Escape sequence. The rest of the line following\n\
 \n\
 ATSIGN/                       End an ongoing chunk declaration.\n\
 \n\
+ATSIGN[file invocation]       Invoke a file to be recursively searched for chunk\n\
+                              definitions as if it were pasted into the current\n\
+                              file at exactly this location.\n\
+\n\
 ATSIGN[anything else]         An ATSIGN followed by any other character is\n\
                               ignored. However, it is recommended to avoid such\n\
                               character sequences for compatibility with future\n\
                               extensions.\n\
 \n";
 
-int main(int argc, char ** argv)
+void lilit(char * file, dict * d, list ** tangles)
 {
     char * source;
-    dict * d;
-    list * tangles = NULL;
-
-    if (argc < 2 || argc > 2 || *argv[1] == '-' /* assume -h */) 
-    {
-        fprintf(stderr, help, VERSION, argv[0]);
-        exit(EXIT_SUCCESS);
-    }
-    char * filename = argv[1];
 
     {
         int file_size;
-        FILE * source_file = fopen(filename, "r");
+        FILE * source_file = fopen(file, "r");
         exit_fail_if ((source_file == NULL), 
                 "Error: could not open file %s\n", 
-                filename);
+                file);
         
         /* get file size */
         fseek(source_file, 0L, SEEK_END);
@@ -352,7 +347,6 @@ int main(int argc, char ** argv)
         source[file_size] = 0;
     }
 
-    d = dict_new(128); /* for storing chunks */
     {
         char * s = source;
         while (*s != '\0')
@@ -394,7 +388,7 @@ int main(int argc, char ** argv)
                                         name, line_number);
                                 /* todo: free existing chunk? */
                             }
-                            if (tangle) list_push(&tangles, (void *)chunk); /* (7) */
+                            if (tangle) list_push(tangles, (void *)chunk); /* (7) */
                         }
 
                         exit_fail_if(!advance_to_next_line(&s), /* (8) */
@@ -496,6 +490,25 @@ int main(int argc, char ** argv)
             }
         }
     }
+}
+
+int main(int argc, char ** argv)
+{
+    dict * d;
+    list * tangles = NULL;
+    char * file;
+
+    if (argc < 2 || argc > 2 || *argv[1] == '-' /* assume -h */) 
+    {
+        fprintf(stderr, help, VERSION, argv[0]);
+        exit(EXIT_SUCCESS);
+    }
+    file = argv[1];
+
+    d = dict_new(128); /* for storing chunks */
+
+    lilit(file, d, &tangles);
+
     for(; tangles != NULL; tangles = tangles->successor) /* (1) */
     {
         FILE * f;
@@ -511,5 +524,6 @@ int main(int argc, char ** argv)
         code_chunk_print(f, d, c, NULL); /* (3) */
         fclose(f);
     }
+
     return 0;
 }
