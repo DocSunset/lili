@@ -191,8 +191,15 @@ char * extract_name(char ** source)
 {
     char * s = *source;
     char terminus = *s++;
-    if (terminus == '{') terminus = '}';
     char * destination = s;
+
+    switch (terminus)
+    {
+        case '{': terminus = '}'; break;
+        case '[': terminus = ']'; break;
+        case '(': terminus = ')'; break;
+        case '<': terminus = '>'; break;
+    }
 
     for (; *s != terminus; ++s)
         exit_fail_if ((*s == '\n' || *s == '\0'), 
@@ -477,12 +484,18 @@ void lilit(char * file, dict * d, list ** tangles)
                     break;
                 case ':':
                     ++s;
-                    exit_fail_if (( *s == '=' || *s == '#' || *s == '+' || *s == '{' 
+                    exit_fail_if (( *s == '=' || *s == '#' || *s == '+' || *s == '{' || *s == '['
                                  || *s == ':' || *s == '/' || *s == '\n'), 
                             "Error: cannot redefine ATSIGN to a character used in control sequences on line %d\n",
                             line_number);
                     ATSIGN = *s++;
                     break;
+                case '[':
+                {
+                    char * inner_file = extract_name(&s);
+                    lilit(inner_file, d, tangles);
+                    break;
+                }
                 default:
                     printf("Warning: unrecognized control sequence ATSIGN%c while scanning prose on line %d\n",
                             *s, line_number);

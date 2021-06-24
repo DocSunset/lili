@@ -75,12 +75,17 @@ test_indents: lilit
 	@cmp indents.out indents.expect
 	@echo success
 
-test: test_makes_file test_same_result test_agrees_with_installed test_indents
+test_multifile: lilit
+	@echo test ./lilit recurses files with @[]
+	@./lilit test/multifile.lilit
+	@cmp multifile.out multifile.expect
+	@echo success
+
+test: test_makes_file test_same_result test_agrees_with_installed test_indents test_multifile
 	@echo ran all tests
 	@mv lilit.bak lilit.c
 	@[ -f lilit.new ] && rm lilit.new
 	@[ -f lilit.c1 ] && rm lilit.c1
-	@[ -f indents.out ] && rm indents.out
-	@[ -f indents.expect ] && rm indents.expect
+	@rm -f *.out *.expect
 
 .PHONY: all options clean dist install uninstall test test_makes_file test_same_result test_agrees_with_installed
