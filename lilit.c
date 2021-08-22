@@ -92,6 +92,8 @@ typedef struct CodeChunk
 {
     char * name;
     list * contents;
+    int invocations;
+    int tangle;
 } code_chunk;
 typedef struct ChunkContents
 {
@@ -130,6 +132,8 @@ code_chunk * code_chunk_new(char * name)
     code_chunk * chunk = malloc(sizeof(code_chunk));
     chunk->name     = name;
     chunk->contents = NULL;
+    chunk->invocations = 0;
+    chunk->tangle = 0;
     return chunk;
 }
 
@@ -220,9 +224,30 @@ int advance_to_next_line(char ** source)
     ++line_number;
     return 1;
 }
-void code_chunk_print(FILE * f, dict * d, code_chunk * c, list * indents)
+void code_chunk_print(FILE * f, dict * d, code_chunk * c, list * indents, int tangle)
 {
     list * l;
+
+    if (c->invocations != 0)
+    {
+        if (c->invocations == 1) 
+            fprintf(stderr, 
+                "Warning: ignoring multiple invocations of code chunk %s.\n",
+                c->name);
+        c->invocations += 1;
+        return;
+    }
+    else if (c->tangle) 
+    {
+        if (tangle) c->invocations = 1;
+        else
+        {
+            fprintf(stderr, "Warning: ignoring invocation of tangle chunk %s within another chunk.\n", c->name);
+            return;
+        }
+    }
+    else c->invocations = 1;
+
     for (l = c->contents; l != NULL; l = l->successor)
     {
         chunk_contents * contents = l->data;
@@ -254,7 +279,7 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, list * indents)
         {
             code_chunk * next_c = contents->reference;
             list_push_back(&indents, (void *)contents->string);
-            code_chunk_print(f, d, next_c, indents);
+            code_chunk_print(f, d, next_c, indents, 0);
             list_pop_back(&indents);
         }
     }
@@ -391,7 +416,11 @@ void lilit(char * file, dict * d, list ** tangles)
                                         name, line_number);
                                 /* todo: free existing chunk? */
                             }
-                            if (tangle) list_push(tangles, (void *)chunk); /* (7) */
+                            if (tangle)
+                            {
+                                chunk->tangle = 1; /* (7.a) */
+                                list_push(tangles, (void *)chunk); /* (7.b) */
+                            }
                         }
 
                         exit_fail_if(!advance_to_next_line(&s), /* (8) */
@@ -516,6 +545,8 @@ int main(int argc, char ** argv)
     {
         FILE * f;
         code_chunk * c = tangles->data;
+
+
         f = fopen(c->name, "w"); /* (2) */
         if (f == NULL)
         {
@@ -524,7 +555,7 @@ int main(int argc, char ** argv)
                     c->name, c->name);
             continue;
         }
-        code_chunk_print(f, d, c, NULL); /* (3) */
+        code_chunk_print(f, d, c, NULL, 1); /* (3) */
         fclose(f);
     }
 

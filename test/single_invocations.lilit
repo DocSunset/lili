@@ -1,0 +1,14 @@
+@='test'
+This is a test
+@/
+
+@#'single_invocations.out'
+@{test}
+Test one two three.
+@{test}
+@/
+
+@#'single_invocations.expect'
+This is a test
+Test one two three.
+@/

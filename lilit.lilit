@@ -310,12 +310,19 @@ typedef struct CodeChunk
 {
     char * name;
     list * contents;
+    int invocations;
+    int tangle;
 } code_chunk;
 // ~/
 ```
 
-The list of contents is in turn populated by entries in the form of the
-following structure:
+The `invocations` member is used when tangling output to enforce that each chunk
+may only be used once (since `lilit` is not meant to act as a text preprocessor
+and should not support "function call by copy-and-paste" usage idioms), and to
+allow a warning to be raised if a chunk is defined but never used.
+
+The list of contents is populated by entries in the form of the following
+structure:
 
 ```c
 // ~+'code chunk struct'
@@ -372,6 +379,8 @@ code_chunk * code_chunk_new(char * name)
     code_chunk * chunk = malloc(sizeof(code_chunk));
     chunk->name     = name;
     chunk->contents = NULL;
+    chunk->invocations = 0;
+    chunk->tangle = 0;
     return chunk;
 }
 // ~/
@@ -471,10 +480,10 @@ error (6). If the contents list is empty, then the chunk must have been
 allocated in response to its invocation in a chunk defined before the present
 definition. In this case, or in case the existing chunk was explicitly
 retrieved for appending to, nothing else needs to be done. If requested, the
-selected chunk is added to the list of chunks to tangle into output machine
-code (7), and then `s` is advanced to point to the start of the next line (8).
-Chunk parsing and extraction can now proceed to populate the contents list of
-`chunk`.
+selected chunk is marked (7.a) and added to the list of chunks to tangle into
+output machine code (7.b), and then `s` is advanced to point to the start of
+the next line (8).  Chunk parsing and extraction can now proceed to populate
+the contents list of `chunk`.
 
 ```c
 // ~='prepare chunk'
@@ -499,7 +508,11 @@ Chunk parsing and extraction can now proceed to populate the contents list of
                 name, line_number);
         /* todo: free existing chunk? */
     }
-    if (tangle) list_push(tangles, (void *)chunk); /* (7) */
+    if (tangle)
+    {
+        chunk->tangle = 1; /* (7.a) */
+        list_push(tangles, (void *)chunk); /* (7.b) */
+    }
 }
 
 exit_fail_if(!advance_to_next_line(&s), /* (8) */
@@ -689,6 +702,9 @@ for(; tangles != NULL; tangles = tangles->successor) /* (1) */
 {
     FILE * f;
     code_chunk * c = tangles->data;
+
+    ~{prevent invocation of tangle chunks}
+
     f = fopen(c->name, "w"); /* (2) */
     if (f == NULL)
     {
@@ -697,7 +713,7 @@ for(; tangles != NULL; tangles = tangles->successor) /* (1) */
                 c->name, c->name);
         continue;
     }
-    code_chunk_print(f, d, c, NULL); /* (3) */
+    code_chunk_print(f, d, c, NULL, 1); /* (3) */
     fclose(f);
 }
 // ~/
@@ -710,9 +726,12 @@ function recurses.
 
 ```c
 // ~='code chunk print'
-void code_chunk_print(FILE * f, dict * d, code_chunk * c, list * indents)
+void code_chunk_print(FILE * f, dict * d, code_chunk * c, list * indents, int tangle)
 {
     list * l;
+
+    ~{prevent multiple invocations}
+
     for (l = c->contents; l != NULL; l = l->successor)
     {
         chunk_contents * contents = l->data;
@@ -740,7 +759,7 @@ the list. As the layers peel back again, the indents are removed from the list.
 // ~='recurse'
 code_chunk * next_c = contents->reference;
 list_push_back(&indents, (void *)contents->string);
-code_chunk_print(f, d, next_c, indents);
+code_chunk_print(f, d, next_c, indents, 0);
 list_pop_back(&indents);
 // ~/
 
@@ -773,6 +792,36 @@ if (contents->partial_line) /* (2) */
 }
 
 fputc('\n', f); /* (3) */
+// ~/
+```
+
+Multiple invocations of any given chunk are not permitted by `lilit`, which is
+not a text preprocessor and does not wish to encourage users to duplicate code
+by making it easy to do so. Disallowing multiple invocations also simplifies
+the prospect of untangling machine source to synchronize changes back to
+literate source, which may be implemented in the future.
+
+```c
+// ~='prevent multiple invocations'
+if (c->invocations != 0)
+{
+    if (c->invocations == 1)
+        fprintf(stderr,
+            "Warning: ignoring multiple invocations of code chunk %s.\n",
+            c->name);
+    c->invocations += 1;
+    return;
+}
+else if (c->tangle)
+{
+    if (tangle) c->invocations = 1;
+    else
+    {
+        fprintf(stderr, "Warning: ignoring invocation of tangle chunk %s within another chunk.\n", c->name);
+        return;
+    }
+}
+else c->invocations = 1;
 // ~/
 ```
 

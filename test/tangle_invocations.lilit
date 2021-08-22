@@ -1,0 +1,12 @@
+@#'tangle_invocations.out1'
+This is a test
+@/
+
+@#'tangle_invocations.out2'
+@{tangle_invocations.out1}
+Test one two three.
+@/
+
+@#'tangle_invocations.expect2'
+Test one two three.
+@/

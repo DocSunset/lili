@@ -20,19 +20,9 @@ two
         four
 @/ @
 
-@='d'
-@{a}
-
-    @{b}
-
-        @{c}
-@/ @
-
 @#'indents.out'
 @{a}
     @{b}
----
-//  @{d}
 @/ @
 
 @#'indents.expect'
@@ -48,23 +38,4 @@ zero
         two
             three
                 four
----
-//  zero
-//  zero
-//      one
-//          two
-
-//      one
-//      one
-//          two
-//              three
-//          two
-//          two
-//              three
-//                  four
-
-//          two
-//          two
-//              three
-//                  four
 @/ @

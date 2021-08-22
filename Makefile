@@ -75,11 +75,23 @@ test_indents: lilit
 	@cmp indents.out indents.expect
 	@echo success
 
-test: test_makes_file test_same_result test_agrees_with_installed test_indents
+test_single_invocations: lilit
+	@echo test ./lilit ignores multiple invocations
+	@./lilit test/single_invocations.lilit
+	@cmp single_invocations.out single_invocations.expect
+	@echo success
+
+test_tangle_invocations: lilit
+	@echo test ./lilit ignores tangle invocations
+	@./lilit test/tangle_invocations.lilit
+	@cmp tangle_invocations.out2 tangle_invocations.expect2
+	@echo success
+
+test: test_makes_file test_same_result test_agrees_with_installed test_indents test_single_invocations test_tangle_invocations
 	@echo ran all tests
 	@mv lilit.bak lilit.c
 	@[ -f lilit.new ] && rm lilit.new
 	@[ -f lilit.c1 ] && rm lilit.c1
-	@rm -f *.out *.expect
+	@rm -f *.out* *.expect*
 
 .PHONY: all options clean dist install uninstall test test_makes_file test_same_result test_agrees_with_installed
