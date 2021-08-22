@@ -252,10 +252,6 @@ ATSIGNATSIGN                  Escape sequence. The rest of the line following\n\
 \n\
 ATSIGN/                       End an ongoing chunk declaration.\n\
 \n\
-ATSIGN[file invocation]       Invoke a file to be recursively searched for chunk\n\
-                              definitions as if it were pasted into the current\n\
-                              file at exactly this location.\n\
-\n\
 ATSIGN[anything else]         An ATSIGN followed by any other character is\n\
                               ignored. However, it is recommended to avoid such\n\
                               character sequences for compatibility with future\n\
@@ -417,18 +413,12 @@ int line_number = 1;
                 break;
             case ':':
                 ++s;
-                exit_fail_if (( *s == '=' || *s == '#' || *s == '+' || *s == '{' || *s == '['
+                exit_fail_if (( *s == '=' || *s == '#' || *s == '+' || *s == '{'
                              || *s == ':' || *s == '/' || *s == '\n'), 
                         "Error: cannot redefine ATSIGN to a character used in control sequences on line %d\n",
                         line_number);
                 ATSIGN = *s++;
                 break;
-            case '[':
-            {
-                char * inner_file = extract_name(&s);
-                lilit(inner_file, d, tangles);
-                break;
-            }
             default:
                 printf("Warning: unrecognized control sequence ATSIGN%c while scanning prose on line %d\n",
                         *s, line_number);

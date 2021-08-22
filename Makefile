@@ -75,13 +75,7 @@ test_indents: lilit
 	@cmp indents.out indents.expect
 	@echo success
 
-test_multifile: lilit
-	@echo test ./lilit recurses files with @[]
-	@./lilit test/multifile.lilit
-	@cmp multifile.out multifile.expect
-	@echo success
-
-test: test_makes_file test_same_result test_agrees_with_installed test_indents test_multifile
+test: test_makes_file test_same_result test_agrees_with_installed test_indents
 	@echo ran all tests
 	@mv lilit.bak lilit.c
 	@[ -f lilit.new ] && rm lilit.new
