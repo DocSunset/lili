@@ -230,14 +230,14 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, list * indents, int ta
 
     if (c->invocations != 0)
     {
-        if (c->invocations == 1) 
-            fprintf(stderr, 
+        if (c->invocations == 1)
+            fprintf(stderr,
                 "Warning: ignoring multiple invocations of code chunk %s.\n",
                 c->name);
         c->invocations += 1;
         return;
     }
-    else if (c->tangle) 
+    else if (c->tangle)
     {
         if (tangle) c->invocations = 1;
         else
