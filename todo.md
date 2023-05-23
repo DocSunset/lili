@@ -32,7 +32,7 @@ pseudo-weaving:
 
 untangling:
 
-- embed lilit activation codes into the tangled output and allow the machine
+- embed litlit activation codes into the tangled output and allow the machine
   source to be untangled and changes pushed into the literate source, allowing
   edits to be made directly to the machine source (benefitting from the
   extensive tooling available for editing such documents) and then sync'd back

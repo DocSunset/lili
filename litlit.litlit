@@ -1,14 +1,14 @@
 <!--- @:~ --->
-# lilit: the little literate programming tool
+# litlit: the little literate programming tool
 
-`lilit` is a simple command line program written in portable dependency-free C
+`litlit` is a simple command line program written in portable dependency-free C
 that aims to provide the absolute bare minimum of functionality needed to
-enable writing programs in a literate programming style.  All `lilit` does is
+enable writing programs in a literate programming style.  All `litlit` does is
 scan a plain-text file for a handful of control sequences, extract source code
 delimited by those control sequences, and output source code files by
 recursively expanding the chunks of code thus found. 
 
-This minimalist approach ensures users of `lilit` can depend on it to continue
+This minimalist approach ensures users of `litlit` can depend on it to continue
 working reliably and easily modify the source code to tailor the program to
 their specific needs, such as adding support for a particular typesetting
 markup or programming language.
@@ -160,26 +160,26 @@ literate programming most exciting to me personally. Literate programs have
 great potential as educational tools. In the best case, literate programs can
 elevate and empower the reader in a way conventional programs simply can't.
 
-# how does `lilit` work?
+# how does `litlit` work?
 
-The remainder of this document (the literate source code for `lilit`) describes
-the functionality and implementation of `lilit`.
+The remainder of this document (the literate source code for `litlit`) describes
+the functionality and implementation of `litlit`.
 
-`lilit` knows nothing about the machine source code language, has no runtime
+`litlit` knows nothing about the machine source code language, has no runtime
 configuration or flags, and makes as few assumptions as possible about the
-typesetting markup used for prose passages.  Furthermore, `lilit` provides no
+typesetting markup used for prose passages.  Furthermore, `litlit` provides no
 functionality for weaving, i.e.  producing typesetting markup from the literate
 source code. This functionality is not essential for literate programming,
 which is about organization and communication rather than typesetting and
 generating cross references (see [this
 article](http://akkartik.name/post/literate-programming) for example).  If the
 writer wishes to produce a typeset document from the source code, typesetting
-markup may be written directly in the lilit-formatted document and the
+markup may be written directly in the litlit-formatted document and the
 typesetting system can be run directly on this document. For example, this
-literate source document for `lilit` is typeset in Github-flavored Markdown.
+literate source document for `litlit` is typeset in Github-flavored Markdown.
 Alternatively, the user may edit the program to introduce support for weaving.
 
-Despite its intentional limitations, `lilit` provides enough functionality to
+Despite its intentional limitations, `litlit` provides enough functionality to
 enable writing in a literate programming style.  Code chunks can be presented
 to the reader in any order, and code chunks can be referred to by name inside
 of other code chunks, allowing for high levels of abstraction in the
@@ -187,17 +187,17 @@ presentation of the program.  When outputting source code, chunks are
 recursively expanded into the output source files while retaining indentation
 for compatibility with white space sensitive languages such as python.
 
-The help text explains the control sequences `lilit` searches for to extract
+The help text explains the control sequences `litlit` searches for to extract
 the machine code embedded in your natural-language document:
 
 ```c
 // ~='help text'
 const char * help =
-"lilit: the little literate programming tool -- version %s\n\
+"litlit: the little literate programming tool -- version %s\n\
 \n\
     USAGE: %s file\n\
 \n\
-    lilit extracts machine source code from literate source code.\n\
+    litlit extracts machine source code from literate source code.\n\
 \n\
 All control sequences begin with a special character called ATSIGN, which is \n\
 set to '@' by default. Except for escaped ATSIGNs, all control sequences consume\n\
@@ -262,17 +262,17 @@ ATSIGN[anything else]         An ATSIGN followed by any other character is\n\
 
 ## program overview
 
-`lilit` is implemented with three main
+`litlit` is implemented with three main
 processing stages: setup, extraction, and output. The setup phase reads the
 file to be processed into memory. During extraction, the file is scanned for
 code chunk definitions, and these are logged in data structures convenient for
 output. The output phase then recursively expands code chunks into files.
 
 ```c
-// ~#'lilit.c'
+// ~#'litlit.c'
 ~{definitions}
 
-void lilit(char * file, dict * d, list ** tangles)
+void litlit(char * file, dict * d, list ** tangles)
 {
     char * source;
 
@@ -289,13 +289,13 @@ int main(int argc, char ** argv)
 
     ~{setup}
 
-    lilit(file, d, &tangles);
+    litlit(file, d, &tangles);
 
     ~{output tangle chunks recursively}
 
     return 0;
 }
-// end lilit.c ~/
+// end litlit.c ~/
 ```
 
 ## code chunk extraction
@@ -317,7 +317,7 @@ typedef struct CodeChunk
 ```
 
 The `invocations` member is used when tangling output to enforce that each chunk
-may only be used once (since `lilit` is not meant to act as a text preprocessor
+may only be used once (since `litlit` is not meant to act as a text preprocessor
 and should not support "function call by copy-and-paste" usage idioms), and to
 allow a warning to be raised if a chunk is defined but never used.
 
@@ -795,7 +795,7 @@ fputc('\n', f); /* (3) */
 // ~/
 ```
 
-Multiple invocations of any given chunk are not permitted by `lilit`, which is
+Multiple invocations of any given chunk are not permitted by `litlit`, which is
 not a text preprocessor and does not wish to encourage users to duplicate code
 by making it easy to do so. Disallowing multiple invocations also simplifies
 the prospect of untangling machine source to synchronize changes back to
@@ -1075,7 +1075,7 @@ Code chunk print is described above, and appended here in the program.
 // ~/
 ```
 
-Presently, lilit takes no flags and accepts only one file to tangle at a time. 
+Presently, litlit takes no flags and accepts only one file to tangle at a time. 
 
 ```c
 // ~='parse command line arguments'
@@ -1150,10 +1150,10 @@ abstract away some detail at that high level.
 
 ## tests
 
-The main test case for `lilit` is its own literate source (i.e. this document).
-Producing `lilit.c` by tangling `lilit.lilit` exercises all of the control
-sequences specified in the help text. `lilit` should produce a source file when
+The main test case for `litlit` is its own literate source (i.e. this document).
+Producing `litlit.c` by tangling `litlit.litlit` exercises all of the control
+sequences specified in the help text. `litlit` should produce a source file when
 run, and the same resulting source file every time it is run. This result
-should be the same regardless of which version of lilit is run. These assertions
+should be the same regardless of which version of litlit is run. These assertions
 are tested in the Makefile included in this repository. Simple run `make test`
-to ensure `lilit` is working as expected.
+to ensure `litlit` is working as expected.

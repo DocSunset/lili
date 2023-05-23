@@ -1,97 +1,97 @@
 include config.mk
 
-all: options lilit.c lilit
+all: options litlit.c litlit
 
 options:
-	@echo lilit build options:
+	@echo litlit build options:
 	@echo "CFLAGS   = ${CFLAGS}"
 	@echo "LDFLAGS  = ${LDFLAGS}"
 	@echo "CC       = ${CC}"
 
-lilit.c: lilit.lilit
+litlit.c: litlit.litlit
 	@echo tangling source from $^
-	@lilit lilit.lilit
+	@litlit litlit.litlit
 
 ${OBJ}: config.mk
 
-lilit: lilit.c
+litlit: litlit.c
 	@echo building $@
-	@${CC} ${CFLAGS} ${LDFLAGS} -o $@ lilit.c
+	@${CC} ${CFLAGS} ${LDFLAGS} -o $@ litlit.c
 
-lilit.debug: lilit.c
+litlit.debug: litlit.c
 	@echo building $@
-	@${CC} ${DEBUGFLAGS} ${LDFLAGS} -o $@ lilit.c
+	@${CC} ${DEBUGFLAGS} ${LDFLAGS} -o $@ litlit.c
 
 clean:
 	@echo cleaning
-	@rm -f lilit lilit.debug ${OBJ} ${LIBOBJ} lilit-${VERSION}.tar.gz
+	@rm -f litlit litlit.debug ${OBJ} ${LIBOBJ} litlit-${VERSION}.tar.gz
 
-dist: clean lilit.c
+dist: clean litlit.c
 	@echo creating dist tarball
-	@mkdir -p lilit-${VERSION}
-	@cp -R Makefile config.mk lilit.c lilit.lilit LICENSE lilit-${VERSION}
-	@tar -cf lilit-${VERSION}.tar lilit-${VERSION}
-	@gzip lilit-${VERSION}.tar
-	@rm -rf lilit-${VERSION}
+	@mkdir -p litlit-${VERSION}
+	@cp -R Makefile config.mk litlit.c litlit.litlit LICENSE litlit-${VERSION}
+	@tar -cf litlit-${VERSION}.tar litlit-${VERSION}
+	@gzip litlit-${VERSION}.tar
+	@rm -rf litlit-${VERSION}
 
 install: all
 	@echo installing executable file to ${DESTDIR}${PREFIX}/bin
 	@mkdir -p ${DESTDIR}${PREFIX}/bin
-	@cp -f lilit ${DESTDIR}${PREFIX}/bin
-	@chmod 755 ${DESTDIR}${PREFIX}/bin/lilit
+	@cp -f litlit ${DESTDIR}${PREFIX}/bin
+	@chmod 755 ${DESTDIR}${PREFIX}/bin/litlit
 
 uninstall:
 	@echo removing executable file from ${DESTDIR}${PREFIX}/bin
-	@rm -f ${DESTDIR}${PREFIX}/bin/lilit
+	@rm -f ${DESTDIR}${PREFIX}/bin/litlit
 
-test_makes_file: lilit
-	@mv lilit.c lilit.bak
-	@echo test lilit produces lilit.c
-	@./lilit lilit.lilit
-	@test -f lilit.c
+test_makes_file: litlit
+	@mv litlit.c litlit.bak
+	@echo test litlit produces litlit.c
+	@./litlit litlit.litlit
+	@test -f litlit.c
 	@echo success
 
-test_same_result: lilit
-	@echo test lilit produces the same result every time
-	@mv lilit.c lilit.bak
-	@./lilit lilit.lilit
-	@mv lilit.c lilit.c1
-	@./lilit lilit.lilit
-	@cmp lilit.c lilit.c1
+test_same_result: litlit
+	@echo test litlit produces the same result every time
+	@mv litlit.c litlit.bak
+	@./litlit litlit.litlit
+	@mv litlit.c litlit.c1
+	@./litlit litlit.litlit
+	@cmp litlit.c litlit.c1
 	@echo success
 
-test_agrees_with_installed: lilit
-	@echo test ./lilit produces same result as system lilit
-	@mv lilit.c lilit.bak
-	@./lilit lilit.lilit
-	@mv lilit.c lilit.new
-	@lilit lilit.lilit
-	@cmp lilit.c lilit.new
+test_agrees_with_installed: litlit
+	@echo test ./litlit produces same result as system litlit
+	@mv litlit.c litlit.bak
+	@./litlit litlit.litlit
+	@mv litlit.c litlit.new
+	@litlit litlit.litlit
+	@cmp litlit.c litlit.new
 	@echo success
 
-test_indents: lilit
-	@echo test ./lilit produces correct indents
-	@./lilit test/indents.lilit
+test_indents: litlit
+	@echo test ./litlit produces correct indents
+	@./litlit test/indents.litlit
 	@cmp indents.out indents.expect
 	@echo success
 
-test_single_invocations: lilit
-	@echo test ./lilit ignores multiple invocations
-	@./lilit test/single_invocations.lilit
+test_single_invocations: litlit
+	@echo test ./litlit ignores multiple invocations
+	@./litlit test/single_invocations.litlit
 	@cmp single_invocations.out single_invocations.expect
 	@echo success
 
-test_tangle_invocations: lilit
-	@echo test ./lilit ignores tangle invocations
-	@./lilit test/tangle_invocations.lilit
+test_tangle_invocations: litlit
+	@echo test ./litlit ignores tangle invocations
+	@./litlit test/tangle_invocations.litlit
 	@cmp tangle_invocations.out2 tangle_invocations.expect2
 	@echo success
 
 test: test_makes_file test_same_result test_agrees_with_installed test_indents test_single_invocations test_tangle_invocations
 	@echo ran all tests
-	@mv lilit.bak lilit.c
-	@[ -f lilit.new ] && rm lilit.new
-	@[ -f lilit.c1 ] && rm lilit.c1
+	@mv litlit.bak litlit.c
+	@[ -f litlit.new ] && rm litlit.new
+	@[ -f litlit.c1 ] && rm litlit.c1
 	@rm -f *.out* *.expect*
 
 .PHONY: all options clean dist install uninstall test test_makes_file test_same_result test_agrees_with_installed

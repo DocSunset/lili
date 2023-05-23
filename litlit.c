@@ -286,11 +286,11 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, list * indents, int ta
 }
 
 const char * help =
-"lilit: the little literate programming tool -- version %s\n\
+"litlit: the little literate programming tool -- version %s\n\
 \n\
     USAGE: %s file\n\
 \n\
-    lilit extracts machine source code from literate source code.\n\
+    litlit extracts machine source code from literate source code.\n\
 \n\
 All control sequences begin with a special character called ATSIGN, which is \n\
 set to '@' by default. Except for escaped ATSIGNs, all control sequences consume\n\
@@ -351,7 +351,7 @@ ATSIGN[anything else]         An ATSIGN followed by any other character is\n\
                               extensions.\n\
 \n";
 
-void lilit(char * file, dict * d, list ** tangles)
+void litlit(char * file, dict * d, list ** tangles)
 {
     char * source;
 
@@ -539,7 +539,7 @@ int main(int argc, char ** argv)
 
     d = dict_new(128); /* for storing chunks */
 
-    lilit(file, d, &tangles);
+    litlit(file, d, &tangles);
 
     for(; tangles != NULL; tangles = tangles->successor) /* (1) */
     {
