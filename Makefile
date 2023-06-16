@@ -1,97 +1,97 @@
 include config.mk
 
-all: options litlit.c litlit
+all: options lili.c lili
 
 options:
-	@echo litlit build options:
+	@echo lili build options:
 	@echo "CFLAGS   = ${CFLAGS}"
 	@echo "LDFLAGS  = ${LDFLAGS}"
 	@echo "CC       = ${CC}"
 
-litlit.c: litlit.litlit
+lili.c: lili.lili
 	@echo tangling source from $^
-	@litlit litlit.litlit
+	@lili lili.lili
 
 ${OBJ}: config.mk
 
-litlit: litlit.c
+lili: lili.c
 	@echo building $@
-	@${CC} ${CFLAGS} ${LDFLAGS} -o $@ litlit.c
+	@${CC} ${CFLAGS} ${LDFLAGS} -o $@ lili.c
 
-litlit.debug: litlit.c
+lili.debug: lili.c
 	@echo building $@
-	@${CC} ${DEBUGFLAGS} ${LDFLAGS} -o $@ litlit.c
+	@${CC} ${DEBUGFLAGS} ${LDFLAGS} -o $@ lili.c
 
 clean:
 	@echo cleaning
-	@rm -f litlit litlit.debug ${OBJ} ${LIBOBJ} litlit-${VERSION}.tar.gz
+	@rm -f lili lili.debug ${OBJ} ${LIBOBJ} lili-${VERSION}.tar.gz
 
-dist: clean litlit.c
+dist: clean lili.c
 	@echo creating dist tarball
-	@mkdir -p litlit-${VERSION}
-	@cp -R Makefile config.mk litlit.c litlit.litlit LICENSE litlit-${VERSION}
-	@tar -cf litlit-${VERSION}.tar litlit-${VERSION}
-	@gzip litlit-${VERSION}.tar
-	@rm -rf litlit-${VERSION}
+	@mkdir -p lili-${VERSION}
+	@cp -R Makefile config.mk lili.c lili.lili LICENSE lili-${VERSION}
+	@tar -cf lili-${VERSION}.tar lili-${VERSION}
+	@gzip lili-${VERSION}.tar
+	@rm -rf lili-${VERSION}
 
 install: all
 	@echo installing executable file to ${DESTDIR}${PREFIX}/bin
 	@mkdir -p ${DESTDIR}${PREFIX}/bin
-	@cp -f litlit ${DESTDIR}${PREFIX}/bin
-	@chmod 755 ${DESTDIR}${PREFIX}/bin/litlit
+	@cp -f lili ${DESTDIR}${PREFIX}/bin
+	@chmod 755 ${DESTDIR}${PREFIX}/bin/lili
 
 uninstall:
 	@echo removing executable file from ${DESTDIR}${PREFIX}/bin
-	@rm -f ${DESTDIR}${PREFIX}/bin/litlit
+	@rm -f ${DESTDIR}${PREFIX}/bin/lili
 
-test_makes_file: litlit
-	@mv litlit.c litlit.bak
-	@echo test litlit produces litlit.c
-	@./litlit litlit.litlit
-	@test -f litlit.c
+test_makes_file: lili
+	@mv lili.c lili.bak
+	@echo test lili produces lili.c
+	@./lili lili.lili
+	@test -f lili.c
 	@echo success
 
-test_same_result: litlit
-	@echo test litlit produces the same result every time
-	@mv litlit.c litlit.bak
-	@./litlit litlit.litlit
-	@mv litlit.c litlit.c1
-	@./litlit litlit.litlit
-	@cmp litlit.c litlit.c1
+test_same_result: lili
+	@echo test lili produces the same result every time
+	@mv lili.c lili.bak
+	@./lili lili.lili
+	@mv lili.c lili.c1
+	@./lili lili.lili
+	@cmp lili.c lili.c1
 	@echo success
 
-test_agrees_with_installed: litlit
-	@echo test ./litlit produces same result as system litlit
-	@mv litlit.c litlit.bak
-	@./litlit litlit.litlit
-	@mv litlit.c litlit.new
-	@litlit litlit.litlit
-	@cmp litlit.c litlit.new
+test_agrees_with_installed: lili
+	@echo test ./lili produces same result as system lili
+	@mv lili.c lili.bak
+	@./lili lili.lili
+	@mv lili.c lili.new
+	@lili lili.lili
+	@cmp lili.c lili.new
 	@echo success
 
-test_indents: litlit
-	@echo test ./litlit produces correct indents
-	@./litlit test/indents.litlit
+test_indents: lili
+	@echo test ./lili produces correct indents
+	@./lili test/indents.lili
 	@cmp indents.out indents.expect
 	@echo success
 
-test_single_invocations: litlit
-	@echo test ./litlit ignores multiple invocations
-	@./litlit test/single_invocations.litlit
+test_single_invocations: lili
+	@echo test ./lili ignores multiple invocations
+	@./lili test/single_invocations.lili
 	@cmp single_invocations.out single_invocations.expect
 	@echo success
 
-test_tangle_invocations: litlit
-	@echo test ./litlit ignores tangle invocations
-	@./litlit test/tangle_invocations.litlit
+test_tangle_invocations: lili
+	@echo test ./lili ignores tangle invocations
+	@./lili test/tangle_invocations.lili
 	@cmp tangle_invocations.out2 tangle_invocations.expect2
 	@echo success
 
 test: test_makes_file test_same_result test_agrees_with_installed test_indents test_single_invocations test_tangle_invocations
 	@echo ran all tests
-	@mv litlit.bak litlit.c
-	@[ -f litlit.new ] && rm litlit.new
-	@[ -f litlit.c1 ] && rm litlit.c1
+	@mv lili.bak lili.c
+	@[ -f lili.new ] && rm lili.new
+	@[ -f lili.c1 ] && rm lili.c1
 	@rm -f *.out* *.expect*
 
 .PHONY: all options clean dist install uninstall test test_makes_file test_same_result test_agrees_with_installed

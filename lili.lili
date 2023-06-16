@@ -1,14 +1,14 @@
 <!--- @:~ --->
-# litlit: the little literate programming tool
+# lili: the little literate programming tool
 
-`litlit` is a simple command line program written in portable dependency-free C
+`lili` is a simple command line program written in portable dependency-free C
 that aims to provide the absolute bare minimum of functionality needed to
-enable writing programs in a literate programming style.  All `litlit` does is
+enable writing programs in a literate programming style.  All `lili` does is
 scan a plain-text file for a handful of control sequences, extract source code
 delimited by those control sequences, and output source code files by
 recursively expanding the chunks of code thus found. 
 
-This minimalist approach ensures users of `litlit` can depend on it to continue
+This minimalist approach ensures users of `lili` can depend on it to continue
 working reliably and easily modify the source code to tailor the program to
 their specific needs, such as adding support for a particular typesetting
 markup or programming language.
@@ -118,7 +118,7 @@ the program changes, it is essential to ensure that the associated literature
 is updated with discipline lest it drift out of sync with the actual program
 logic it is meant to describe. The cost of maintaining the prose in addition to
 the program can be magnified in environments where the requirements for the
-program and/or its design may frequently and drastically change.  
+program and/or its design may frequently and drastically change.
 
 However, the most damning challenge to the adoption of literate programming
 comes not from the tooling nor the maintenance of prose, but simply from the
@@ -160,26 +160,26 @@ literate programming most exciting to me personally. Literate programs have
 great potential as educational tools. In the best case, literate programs can
 elevate and empower the reader in a way conventional programs simply can't.
 
-# how does `litlit` work?
+# how does `lili` work?
 
-The remainder of this document (the literate source code for `litlit`) describes
-the functionality and implementation of `litlit`.
+The remainder of this document (the literate source code for `lili`) describes
+the functionality and implementation of `lili`.
 
-`litlit` knows nothing about the machine source code language, has no runtime
+`lili` knows nothing about the machine source code language, has no runtime
 configuration or flags, and makes as few assumptions as possible about the
-typesetting markup used for prose passages.  Furthermore, `litlit` provides no
+typesetting markup used for prose passages.  Furthermore, `lili` provides no
 functionality for weaving, i.e.  producing typesetting markup from the literate
 source code. This functionality is not essential for literate programming,
 which is about organization and communication rather than typesetting and
 generating cross references (see [this
 article](http://akkartik.name/post/literate-programming) for example).  If the
 writer wishes to produce a typeset document from the source code, typesetting
-markup may be written directly in the litlit-formatted document and the
+markup may be written directly in the lili-formatted document and the
 typesetting system can be run directly on this document. For example, this
-literate source document for `litlit` is typeset in Github-flavored Markdown.
+literate source document for `lili` is typeset in Github-flavored Markdown.
 Alternatively, the user may edit the program to introduce support for weaving.
 
-Despite its intentional limitations, `litlit` provides enough functionality to
+Despite its intentional limitations, `lili` provides enough functionality to
 enable writing in a literate programming style.  Code chunks can be presented
 to the reader in any order, and code chunks can be referred to by name inside
 of other code chunks, allowing for high levels of abstraction in the
@@ -187,17 +187,17 @@ presentation of the program.  When outputting source code, chunks are
 recursively expanded into the output source files while retaining indentation
 for compatibility with white space sensitive languages such as python.
 
-The help text explains the control sequences `litlit` searches for to extract
+The help text explains the control sequences `lili` searches for to extract
 the machine code embedded in your natural-language document:
 
 ```c
 // ~='help text'
 const char * help =
-"litlit: the little literate programming tool -- version %s\n\
+"lili: the little literate programming tool -- version %s\n\
 \n\
     USAGE: %s file\n\
 \n\
-    litlit extracts machine source code from literate source code.\n\
+    lili extracts machine source code from literate source code.\n\
 \n\
 All control sequences begin with a special character called ATSIGN, which is \n\
 set to '@' by default. Except for escaped ATSIGNs, all control sequences consume\n\
@@ -262,17 +262,17 @@ ATSIGN[anything else]         An ATSIGN followed by any other character is\n\
 
 ## program overview
 
-`litlit` is implemented with three main
+`lili` is implemented with three main
 processing stages: setup, extraction, and output. The setup phase reads the
 file to be processed into memory. During extraction, the file is scanned for
 code chunk definitions, and these are logged in data structures convenient for
 output. The output phase then recursively expands code chunks into files.
 
 ```c
-// ~#'litlit.c'
+// ~#'lili.c'
 ~{definitions}
 
-void litlit(char * file, dict * d, list ** tangles)
+void lili(char * file, dict * d, list ** tangles)
 {
     char * source;
 
@@ -289,13 +289,13 @@ int main(int argc, char ** argv)
 
     ~{setup}
 
-    litlit(file, d, &tangles);
+    lili(file, d, &tangles);
 
     ~{output tangle chunks recursively}
 
     return 0;
 }
-// end litlit.c ~/
+// end lili.c ~/
 ```
 
 ## code chunk extraction
@@ -317,7 +317,7 @@ typedef struct CodeChunk
 ```
 
 The `invocations` member is used when tangling output to enforce that each chunk
-may only be used once (since `litlit` is not meant to act as a text preprocessor
+may only be used once (since `lili` is not meant to act as a text preprocessor
 and should not support "function call by copy-and-paste" usage idioms), and to
 allow a warning to be raised if a chunk is defined but never used.
 
@@ -795,7 +795,7 @@ fputc('\n', f); /* (3) */
 // ~/
 ```
 
-Multiple invocations of any given chunk are not permitted by `litlit`, which is
+Multiple invocations of any given chunk are not permitted by `lili`, which is
 not a text preprocessor and does not wish to encourage users to duplicate code
 by making it easy to do so. Disallowing multiple invocations also simplifies
 the prospect of untangling machine source to synchronize changes back to
@@ -1075,7 +1075,7 @@ Code chunk print is described above, and appended here in the program.
 // ~/
 ```
 
-Presently, litlit takes no flags and accepts only one file to tangle at a time. 
+Presently, lili takes no flags and accepts only one file to tangle at a time.
 
 ```c
 // ~='parse command line arguments'
@@ -1150,10 +1150,10 @@ abstract away some detail at that high level.
 
 ## tests
 
-The main test case for `litlit` is its own literate source (i.e. this document).
-Producing `litlit.c` by tangling `litlit.litlit` exercises all of the control
-sequences specified in the help text. `litlit` should produce a source file when
+The main test case for `lili` is its own literate source (i.e. this document).
+Producing `lili.c` by tangling `lili.lili` exercises all of the control
+sequences specified in the help text. `lili` should produce a source file when
 run, and the same resulting source file every time it is run. This result
-should be the same regardless of which version of litlit is run. These assertions
+should be the same regardless of which version of lili is run. These assertions
 are tested in the Makefile included in this repository. Simple run `make test`
-to ensure `litlit` is working as expected.
+to ensure `lili` is working as expected.
