@@ -26,7 +26,7 @@ computer programming that prioritizes the relationship between the program
 writer and program reader.  The essence of this approach is the position that
 computer programs should be written primarily as a form of communication
 between humans and only incidentally as a means of instructing computing
-machines to perform useful jobs.  
+machines to perform useful jobs.
 
 Few would disagree that excellent computer code, in addition to whatever other
 positive qualities it may possess, should be easy for any programmer to read
@@ -66,7 +66,7 @@ interspersed in source code, write source code interspersed in a natural
 language narrative.  Rather than write a program primarily to control the
 behavior of a computer and only incidentally to be read by humans, write a
 piece of prose primarily to communicate with humans and only incidentally
-to be executed by a computer.  This is the theory of literate programming.  
+to be executed by a computer.  This is the theory of literate programming.
 
 In order to write a literate program, the expressive power of most programming
 languages is insufficient.  For this reason, the practice of literate
@@ -94,14 +94,14 @@ programs are not only explained better than ever before; they also are better
 programs, because the new methodology encourages me to do a better job."
 Literate programming also seems especially well suited to environments in which
 understanding the program is as important as the program itself, such as in
-academic research where a program is part of research findings.  
+academic research where a program is part of research findings.
 
 However, despite the purported benefits, literate programming has not seen much
 mainstream adoption.  Although there have been numerous remarkable success
 stories (notably [one book written in a literate programming style that won an
 Academy Award](https://www.pbrt.org/)), most programmers do not program in a
 literate style.  This may be explained in part by the disadvantages of literate
-programming.  
+programming.
 
 As Knuth recognized in the paper introducing the style, literate programming
 practice usually entails writing literate programs in a document that combines
