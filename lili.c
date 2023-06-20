@@ -206,11 +206,14 @@ char * extract_name(char ** source)
     }
 
     for (; *s != terminus; ++s)
-        exit_fail_if ((*s == '\n' || *s == '\0'), 
-                "Error: unterminated name on line %d\n", line_number);
-    exit_fail_if (destination == s,
-                "Error: empty name on line %d\n",
-                line_number);
+        exit_fail_if ( (*s == '\n' || *s == '\0')
+                     , "Error: Unterminated name on line %d\n"
+                     , line_number
+                     );
+    exit_fail_if ( destination == s
+                 , "Error: Empty name on line %d\n"
+                 , line_number
+                 );
 
     *s = '\0';
     *source = s + 1;
@@ -231,9 +234,9 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, list * indents, int ta
     if (c->invocations != 0)
     {
         if (c->invocations == 1)
-            fprintf(stderr,
-                "Warning: ignoring multiple invocations of code chunk %s.\n",
-                c->name);
+            exit_fail_if(1, "Error: Ignoring multiple invocations of chunk %s.\n"
+                        , c->name
+                        );
         c->invocations += 1;
         return;
     }
@@ -242,7 +245,11 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, list * indents, int ta
         if (tangle) c->invocations = 1;
         else
         {
-            fprintf(stderr, "Warning: ignoring invocation of tangle chunk %s within another chunk.\n", c->name);
+            exit_fail_if(1
+                        , "Error: Ignoring invocation of tangle chunk %s within "
+                          "another chunk.\n"
+                        , c->name
+                        );
             return;
         }
     }
@@ -265,10 +272,14 @@ void code_chunk_print(FILE * f, dict * d, code_chunk * c, list * indents, int ta
             }
 
 
-            if (contents->partial_line) /* (2) */
+            if (contents->partial_line) /* (2) TODO should this be while? */
             {
                 l = l->successor;
-                exit_fail_if(l == NULL, "Error: partial line without successor in chunk '%s':\n    %s", c->name, contents->string);
+                exit_fail_if(l == NULL
+                            , "Error: Partial line without successor in chunk '%s':\n"
+                              "       %s"
+                            , c->name, contents->string
+                            );
                 contents = l->data;
                 fputs(contents->string, f);
             }
@@ -358,9 +369,9 @@ void lili(char * file, dict * d, list ** tangles)
     {
         int file_size;
         FILE * source_file = fopen(file, "r");
-        exit_fail_if ((source_file == NULL), 
-                "Error: could not open file %s\n", 
-                file);
+        exit_fail_if ( (source_file == NULL)
+                     , "Error: Could not open source file %s\n", file
+                     );
         
         /* get file size */
         fseek(source_file, 0L, SEEK_END);
@@ -389,7 +400,11 @@ void lili(char * file, dict * d, list ** tangles)
                 case '+':
                     if (*(s + 1) != '\'' && *(s + 1) != '\"') 
                     {
-                        printf("Warning: chunk definition sequence on line %d is missing a quote-delimited name. Ignoring\n", line_number);
+                        exit_fail_if(1
+                                    , "Error: Chunk definition sequence on line %d is missing a "
+                                      "quote-delimited name. Ignoring\n"
+                                    , line_number
+                                    );
                         break;
                     }
                     else
@@ -411,9 +426,12 @@ void lili(char * file, dict * d, list ** tangles)
                             }
                             else if (!append) /* (5) */
                             {
-                                exit_fail_if(chunk->contents != NULL, /* (6) */
-                                        "Error: redefinition of chunk '%s' on line %d.\n    Maybe you meant to use a + chunk or accidentally used the same name twice.\n", 
-                                        name, line_number);
+                                exit_fail_if(chunk->contents != NULL /* (6) */
+                                            , "Error: Redefinition of chunk '%s' on line %d.\n"
+                                              "       Maybe you meant to use a + chunk or accidentally "
+                                              "used the same name twice?\n"
+                                            , name, line_number
+                                            );
                                 /* todo: free existing chunk? */
                             }
                             if (tangle)
@@ -423,9 +441,11 @@ void lili(char * file, dict * d, list ** tangles)
                             }
                         }
 
-                        exit_fail_if(!advance_to_next_line(&s), /* (8) */
-                                "Error: file ended before beginning of definition of chunk '%s' on line '%d'\n", 
-                                chunk->name, line_number);
+                        exit_fail_if(!advance_to_next_line(&s) /* (8) */
+                                    , "Error: File ended before beginning of definition of chunk '%s' "
+                                      "on line '%d'\n"
+                                    , chunk->name, line_number
+                                    );
                         {
                             char * start_of_line = s; /* (1) */
                             for (;;)
@@ -464,9 +484,11 @@ void lili(char * file, dict * d, list ** tangles)
                                                 ref = code_chunk_new(name); /* (2.c) */
                                                 dict_add(d, ref);
                                             }
-                                            exit_fail_if(!advance_to_next_line(&s), /* (4) */
-                                                    "Error: file ended during definition of chunk '%s'\n    following invocation of chunk '%s' on line '%d'\n", 
-                                                    chunk->name, name, line_number);
+                                            exit_fail_if(!advance_to_next_line(&s) /* (4) */
+                                                        , "Error: File ended during definition of chunk '%s'\n"
+                                                          "       following invocation of chunk '%s' on line '%d'\n"
+                                                        , chunk->name, name, line_number
+                                                        );
                                         }
 
                                         list_push_back(&chunk->contents, (void *)reference_contents_new(indent, ref)); /* (3) */
@@ -477,9 +499,10 @@ void lili(char * file, dict * d, list ** tangles)
                                         chunk_contents * ending_part = code_contents_new(s);
                                         char * at_the_atsign = s - 1;
 
-                                        exit_fail_if(!advance_to_next_line(&s), 
-                                                "Error: file ended during definition of chunk '%s'\n    following the escape sequence on line '%d'\n", 
-                                                chunk->name, line_number);
+                                        exit_fail_if(!advance_to_next_line(&s)
+                                                , "Error: File ended during definition of chunk '%s'\n"
+                                                  "       following the escape sequence on line '%d'\n"
+                                                , chunk->name, line_number);
 
                                         /* (1) */
                                         *at_the_atsign = '\0'; /* terminate beginning part */
@@ -492,15 +515,20 @@ void lili(char * file, dict * d, list ** tangles)
                                     }
                                     else /* (3.c) */
                                     {
-                                        printf("Warning: unrecognized control sequence ATSIGN%c while parsing chunk on line %d\n",
-                                                *s, line_number);
+                                        exit_fail_if(1, "Error: Unrecognized control sequence ATSIGN%c "
+                                                        "while parsing chunk on line %d\n"
+                                                    , *s, line_number
+                                                    );
                                         continue; /* (3.d) */
                                     }
                                     start_of_line = s; /* (3.b) */
                                 }
                                 else /* (4) */ 
                                 {
-                                    exit_fail_if(*s == '\0', "File ended during definition of chunk %s", chunk->name);
+                                    exit_fail_if(*s == '\0'
+                                                , "Error: File ended during definition of chunk %s"
+                                                , chunk->name
+                                                );
                                     ++s;
                                 }
                             }
@@ -509,15 +537,22 @@ void lili(char * file, dict * d, list ** tangles)
                     break;
                 case ':':
                     ++s;
-                    exit_fail_if (( *s == '=' || *s == '#' || *s == '+' || *s == '{'
-                                 || *s == ':' || *s == '/' || *s == '\n'), 
-                            "Error: cannot redefine ATSIGN to a character used in control sequences on line %d\n",
-                            line_number);
+                    exit_fail_if ( (  *s == '=' || *s == '#' || *s == '+'
+                                   || *s == '{' || *s == ':' || *s == '/'
+                                   || *s == '\n'
+                                   )
+                                 , "Error: Cannot redefine ATSIGN to a character "
+                                   "used in control sequences on line %d\n"
+                                 , line_number
+                                 );
                     ATSIGN = *s++;
                     break;
                 default:
-                    printf("Warning: unrecognized control sequence ATSIGN%c while scanning prose on line %d\n",
-                            *s, line_number);
+                    exit_fail_if(1
+                                , "Error: Unrecognized control sequence ATSIGN%c "
+                                  "while scanning prose on line %d\n"
+                                , *s, line_number
+                                );
                 }
             }
         }
@@ -550,9 +585,9 @@ int main(int argc, char ** argv)
         f = fopen(c->name, "w"); /* (2) */
         if (f == NULL)
         {
-            fprintf(stderr,
-                    "Warning: failed to open file '%s', skipping tangle '%s'\n",
-                    c->name, c->name);
+            exit_fail_if(1, "Error: Failed to open file '%s', skipping tangle\n"
+                        , c->name
+                        );
             continue;
         }
         code_chunk_print(f, d, c, NULL, 1); /* (3) */

@@ -77,15 +77,11 @@ test_indents: lili
 
 test_single_invocations: lili
 	@echo test ./lili ignores multiple invocations
-	@./lili test/single_invocations.lili
-	@cmp single_invocations.out single_invocations.expect
-	@echo success
+	-./lili test/single_invocations.lili ; test $$? != 0 && echo success || echo failure
 
 test_tangle_invocations: lili
 	@echo test ./lili ignores tangle invocations
-	@./lili test/tangle_invocations.lili
-	@cmp tangle_invocations.out2 tangle_invocations.expect2
-	@echo success
+	-./lili test/tangle_invocations.lili ; test $$? != 0 && echo success || echo failure
 
 test: test_makes_file test_same_result test_agrees_with_installed test_indents test_single_invocations test_tangle_invocations
 	@echo ran all tests
