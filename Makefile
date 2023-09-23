@@ -35,14 +35,14 @@ dist: clean lili.c
 	@rm -rf lili-${VERSION}
 
 install: all
-	@echo installing executable file to ${DESTDIR}${PREFIX}/bin
-	@mkdir -p ${DESTDIR}${PREFIX}/bin
-	@cp -f lili ${DESTDIR}${PREFIX}/bin
-	@chmod 755 ${DESTDIR}${PREFIX}/bin/lili
+	@echo installing executable file to ${DESTDIR}${prefix}/bin
+	@mkdir -p ${DESTDIR}${prefix}/bin
+	@cp -f lili ${DESTDIR}${prefix}/bin
+	@chmod 755 ${DESTDIR}${prefix}/bin/lili
 
 uninstall:
-	@echo removing executable file from ${DESTDIR}${PREFIX}/bin
-	@rm -f ${DESTDIR}${PREFIX}/bin/lili
+	@echo removing executable file from ${DESTDIR}${prefix}/bin
+	@rm -f ${DESTDIR}${prefix}/bin/lili
 
 test_makes_file: lili
 	@mv lili.c lili.bak

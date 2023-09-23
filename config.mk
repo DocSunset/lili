@@ -1,7 +1,7 @@
-VERSION = 0.4.2
+VERSION = 0.4.3
 
 # paths
-PREFIX = /usr/local
+prefix = /usr/local
 
 # flags
 DEBUGFLAGS = -g -O0 -Wall -Werror -ansi ${INCS} -DVERSION=\"${VERSION}\"
