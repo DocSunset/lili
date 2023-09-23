@@ -368,6 +368,7 @@ void lili(char * file, dict * d, list ** tangles)
 
     {
         int file_size;
+        size_t fread_size;
         FILE * source_file = fopen(file, "r");
         exit_fail_if ( (source_file == NULL)
                      , "Error: Could not open source file %s\n", file
@@ -380,7 +381,8 @@ void lili(char * file, dict * d, list ** tangles)
         
         /* copy file into memory */
         source = malloc(1 + file_size); /* one added for null termination */
-        fread(source, 1, file_size, source_file); 
+        fread_size = fread(source, 1, file_size, source_file);
+        if (fread_size != file_size) fprintf(stderr, "Warning: fread_size doesn't match file_size???\n");
         fclose(source_file);
         
         source[file_size] = 0;

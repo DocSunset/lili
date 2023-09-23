@@ -1,10 +1,5 @@
 possible new editing features:
 
-- allow input from stdin?
-- allow multiple input files?
-
-- output a warning if a chunk is defined but not used
-
 - @! comment
     - a mechanism for inserting comments that are not propagated to tangled
       outputs (but might be propagated to woven outputs)
@@ -18,6 +13,16 @@ possible new editing features:
 
 - nested chunk definitions
     - so I could append to other chunks in the middle of a chunk definition
+
+- limited support for invoking chunks multiple times, specifically and solely
+  intended for copyright and license boilerplate, or better, a sanctioned workflow
+  for limited text template / macro expansion, e.g. based on a limited yaml
+  frontmatter, possibly as a separate tool
+
+- ability to make directories if they don't already exist
+
+- output a cachefile enabling better incremental build support and to clean up
+  tangled files that have changed name
 
 pseudo-weaving:
 
@@ -44,3 +49,19 @@ untangling:
       away without making the machine source horribly ugly?
     - will require machine-language specific knowledge, mostly how to write
       comments.
+    - complicated!
+
+probably will not implement:
+
+- allow input from stdin
+    - there hasn't yet been a reason to implement this, although it's possible
+      to imagine a workflow where a file is first processed by something other
+      than lili, and then piped into lili. Maybe one day if there's need.
+
+will not implement:
+
+- allow multiple input files
+    - this introduces a lot of complexity surrounding scope; it's necessary to
+      ensure that a chunk defined in a.lili can't be invoked from b.lili. It's
+      also completely unnecessary since it's trivially easy to simply invoke
+      lili more than once
